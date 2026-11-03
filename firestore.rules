@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check authentication
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if the caller matches the specified user UID
+    function isUser(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    // Helper to get user profile data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Role checkers
+    function isTeacher() {
+      return isAuthenticated() && getUserData().role == 'teacher';
+    }
+    
+    function isStudent() {
+      return isAuthenticated() && getUserData().role == 'student';
+    }
+
+    // 1. User Profiles:
+    // Any authenticated user can read their profile; updates only by owner
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // Prohibit tampering with user role or IDs after creation
+      allow update: if isUser(userId) 
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.email == resource.data.email;
+      allow delete: if false; // Disallow deletion through client SDK
+    }
+
+    // 2. Courses:
+    // All authenticated users can read courses to browse curriculum
+    match /courses/{courseId} {
+      allow read: if isAuthenticated();
+      // Only teachers can create courses and manage courses they own
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      allow update, delete: if isTeacher() && resource.data.teacherId == request.auth.uid;
+
+      // Course Enrollments subcollection
+      match /enrollments/{studentUid} {
+        allow read: if isAuthenticated();
+        // Only the course teacher can directly approve/modify enrollments
+        allow write: if isTeacher() && get(/databases/$(database)/documents/courses/$(courseId)).data.teacherId == request.auth.uid;
+      }
+    }
+
+    // 3. Enrollment Requests:
+    match /enrollmentRequests/{requestId} {
+      // Students can read their own requests; Teachers can read requests for their courses
+      allow read: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.teacherId == request.auth.uid
+      );
+      // Students can submit pending requests for themselves
+      allow create: if isStudent() 
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      // Only the course teacher can approve or reject
+      allow update: if isTeacher() 
+        && resource.data.teacherId == request.auth.uid
+        && (request.resource.data.status in ['approved', 'rejected']);
+      allow delete: if false;
+    }
+
+    // 4. Attendance Sessions:
+    match /attendanceSessions/{sessionId} {
+      allow read: if isAuthenticated();
+      // Only the course teacher can initialize and manage sessions
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      allow update: if isTeacher() && resource.data.teacherId == request.auth.uid;
+      allow delete: if false;
+
+      // Attendance records subcollection:
+      match /attendance/{studentUid} {
+        // Teacher can read all; Students can read their own record
+        allow read: if isAuthenticated() && (
+          isTeacher() || request.auth.uid == studentUid
+        );
+        // Direct client writes are prohibited — validation must be done via Cloud Functions
+        // or strictly validated transactional rules
+        allow write: if isTeacher() && get(/databases/$(database)/documents/attendanceSessions/$(sessionId)).data.teacherId == request.auth.uid;
+      }
+    }
+  }
+}
+
