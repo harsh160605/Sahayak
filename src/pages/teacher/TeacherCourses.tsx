@@ -25,25 +25,30 @@ export const TeacherCourses: React.FC = () => {
     c.courseName.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
-    addCourse({
-      courseCode: courseCode.trim().toUpperCase(),
-      courseName: courseName.trim(),
-      department,
-      semester,
-      academicYear,
-      teacherId: currentUser.uid,
-      teacherName: currentUser.fullName,
-      description: description.trim()
-    });
+    try {
+      await addCourse({
+        courseCode: courseCode.trim().toUpperCase(),
+        courseName: courseName.trim(),
+        department,
+        semester,
+        academicYear,
+        teacherId: currentUser.uid,
+        teacherName: currentUser.fullName,
+        description: description.trim()
+      });
 
-    setIsModalOpen(false);
-    setCourseCode('');
-    setCourseName('');
-    setDescription('');
+      setIsModalOpen(false);
+      setCourseCode('');
+      setCourseName('');
+      setDescription('');
+    } catch (err: any) {
+      console.error('Failed to create course in Firestore:', err);
+      alert('Error creating course: ' + (err.message || err));
+    }
   };
 
   return (

@@ -13,6 +13,17 @@ import {
   INITIAL_SESSIONS, 
   INITIAL_ATTENDANCE_RECORDS 
 } from '../data/initialData';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  onSnapshot, 
+  query, 
+  orderBy 
+} from 'firebase/firestore';
+import { db, isLiveFirebaseConfigured } from '../config/firebase';
 
 interface DataContextType {
   courses: Course[];
@@ -22,103 +33,168 @@ interface DataContextType {
   attendanceRecords: AttendanceRecord[];
   
   // Course actions
-  addCourse: (course: Omit<Course, 'id' | 'createdAt' | 'status' | 'enrolledCount'>) => Course;
-  updateCourse: (id: string, updates: Partial<Course>) => void;
+  addCourse: (course: Omit<Course, 'id' | 'createdAt' | 'status' | 'enrolledCount'>) => Promise<Course>;
+  updateCourse: (id: string, updates: Partial<Course>) => Promise<void>;
   
   // Student Enrollment actions
-  requestEnrollment: (studentUid: string, studentName: string, studentRollNo: string, studentEmail: string, courseId: string) => { success: boolean; message: string };
-  approveRequest: (requestId: string) => void;
-  rejectRequest: (requestId: string, reason?: string) => void;
-  manuallyEnrollStudent: (courseId: string, studentUid: string, studentName: string, studentRollNo: string, studentEmail: string) => { success: boolean; message: string };
-  removeStudentFromCourse: (courseId: string, studentUid: string) => void;
+  requestEnrollment: (studentUid: string, studentName: string, studentRollNo: string, studentEmail: string, courseId: string) => Promise<{ success: boolean; message: string }>;
+  approveRequest: (requestId: string) => Promise<void>;
+  rejectRequest: (requestId: string, reason?: string) => Promise<void>;
+  manuallyEnrollStudent: (courseId: string, studentUid: string, studentName: string, studentRollNo: string, studentEmail: string) => Promise<{ success: boolean; message: string }>;
+  removeStudentFromCourse: (courseId: string, studentUid: string) => Promise<void>;
   
   // Session & QR actions
-  startAttendanceSession: (courseId: string, teacherId: string, lectureTopic: string, qrRefreshIntervalSeconds: 3 | 5) => AttendanceSession;
-  updateSessionToken: (sessionId: string, token: string, expiresAt: number) => void;
-  pauseSession: (sessionId: string) => void;
-  resumeSession: (sessionId: string) => void;
-  endSession: (sessionId: string) => void;
+  startAttendanceSession: (courseId: string, teacherId: string, lectureTopic: string, qrRefreshIntervalSeconds: 3 | 5) => Promise<AttendanceSession>;
+  updateSessionToken: (sessionId: string, token: string, expiresAt: number) => Promise<void>;
+  pauseSession: (sessionId: string) => Promise<void>;
+  resumeSession: (sessionId: string) => Promise<void>;
+  endSession: (sessionId: string) => Promise<void>;
   
-  // Live attendance verification & recording (Simulated Server-side validation)
+  // Live attendance verification & recording
   verifyAndRecordAttendance: (
     token: string, 
     studentUid: string, 
     studentName: string, 
     studentRollNo: string
-  ) => { success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string };
+  ) => Promise<{ success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string }>;
   
   // Correction & manual overrides
-  updateAttendanceStatus: (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => void;
+  updateAttendanceStatus: (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [courses, setCourses] = useState<Course[]>(() => {
+    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_courses');
     return saved ? JSON.parse(saved) : INITIAL_COURSES;
   });
 
   const [enrollments, setEnrollments] = useState<CourseEnrollment[]>(() => {
+    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_enrollments');
     return saved ? JSON.parse(saved) : INITIAL_ENROLLMENTS;
   });
 
   const [requests, setRequests] = useState<EnrollmentRequest[]>(() => {
+    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_requests');
     return saved ? JSON.parse(saved) : INITIAL_REQUESTS;
   });
 
   const [sessions, setSessions] = useState<AttendanceSession[]>(() => {
+    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_sessions');
     return saved ? JSON.parse(saved) : INITIAL_SESSIONS;
   });
 
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => {
+    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_attendance_records');
     return saved ? JSON.parse(saved) : INITIAL_ATTENDANCE_RECORDS;
   });
 
-  // Sync to local storage for persistence across reloads
+  // Real-time Firestore Sync Listeners
   useEffect(() => {
-    localStorage.setItem('smartattend_courses', JSON.stringify(courses));
-  }, [courses]);
+    if (!isLiveFirebaseConfigured) {
+      // Offline fallback: sync to localStorage
+      localStorage.setItem('smartattend_courses', JSON.stringify(courses));
+      localStorage.setItem('smartattend_enrollments', JSON.stringify(enrollments));
+      localStorage.setItem('smartattend_requests', JSON.stringify(requests));
+      localStorage.setItem('smartattend_sessions', JSON.stringify(sessions));
+      localStorage.setItem('smartattend_attendance_records', JSON.stringify(attendanceRecords));
+      return;
+    }
 
-  useEffect(() => {
-    localStorage.setItem('smartattend_enrollments', JSON.stringify(enrollments));
-  }, [enrollments]);
+    // 1. Listen to Courses collection in Cloud Firestore
+    const unsubCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
+      const items: Course[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      // Sort newest first
+      items.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setCourses(items);
+    });
 
-  useEffect(() => {
-    localStorage.setItem('smartattend_requests', JSON.stringify(requests));
-  }, [requests]);
+    // 2. Listen to Enrollments
+    const unsubEnrollments = onSnapshot(collection(db, 'enrollments'), (snapshot) => {
+      const items: CourseEnrollment[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      setEnrollments(items);
+    });
 
-  useEffect(() => {
-    localStorage.setItem('smartattend_sessions', JSON.stringify(sessions));
-  }, [sessions]);
+    // 3. Listen to Enrollment Requests
+    const unsubRequests = onSnapshot(collection(db, 'enrollmentRequests'), (snapshot) => {
+      const items: EnrollmentRequest[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      items.sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
+      setRequests(items);
+    });
 
-  useEffect(() => {
-    localStorage.setItem('smartattend_attendance_records', JSON.stringify(attendanceRecords));
-  }, [attendanceRecords]);
+    // 4. Listen to Attendance Sessions
+    const unsubSessions = onSnapshot(collection(db, 'attendanceSessions'), (snapshot) => {
+      const items: AttendanceSession[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      items.sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime());
+      setSessions(items);
+    });
+
+    // 5. Listen to Attendance Records
+    const unsubAttendance = onSnapshot(collection(db, 'attendanceRecords'), (snapshot) => {
+      const items: AttendanceRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      items.sort((a, b) => new Date(b.markedAt || 0).getTime() - new Date(a.markedAt || 0).getTime());
+      setAttendanceRecords(items);
+    });
+
+    return () => {
+      unsubCourses();
+      unsubEnrollments();
+      unsubRequests();
+      unsubSessions();
+      unsubAttendance();
+    };
+  }, [isLiveFirebaseConfigured]);
 
   // Course actions
-  const addCourse = (data: Omit<Course, 'id' | 'createdAt' | 'status' | 'enrolledCount'>) => {
+  const addCourse = async (data: Omit<Course, 'id' | 'createdAt' | 'status' | 'enrolledCount'>) => {
+    const courseId = `course_${Date.now()}`;
     const newCourse: Course = {
       ...data,
-      id: `course_${Date.now()}`,
+      id: courseId,
       createdAt: new Date().toISOString(),
       status: 'active',
       enrolledCount: 0
     };
-    setCourses(prev => [newCourse, ...prev]);
+
+    if (isLiveFirebaseConfigured) {
+      await setDoc(doc(db, 'courses', courseId), newCourse);
+    } else {
+      setCourses(prev => [newCourse, ...prev]);
+    }
     return newCourse;
   };
 
-  const updateCourse = (id: string, updates: Partial<Course>) => {
-    setCourses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  const updateCourse = async (id: string, updates: Partial<Course>) => {
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'courses', id), updates);
+    } else {
+      setCourses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    }
   };
 
   // Enrollment actions
-  const requestEnrollment = (
+  const requestEnrollment = async (
     studentUid: string, 
     studentName: string, 
     studentRollNo: string, 
@@ -134,8 +210,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const existingPending = requests.some(r => r.courseId === courseId && r.studentId === studentUid && r.status === 'pending');
     if (existingPending) return { success: false, message: 'An enrollment request is already pending for this course.' };
 
+    const reqId = `req_${Date.now()}`;
     const newReq: EnrollmentRequest = {
-      id: `req_${Date.now()}`,
+      id: reqId,
       studentId: studentUid,
       studentName,
       studentRollNo,
@@ -148,19 +225,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       requestedAt: new Date().toISOString()
     };
 
-    setRequests(prev => [newReq, ...prev]);
-    return { success: true, message: 'Enrollment request submitted successfully.' };
+    if (isLiveFirebaseConfigured) {
+      await setDoc(doc(db, 'enrollmentRequests', reqId), newReq);
+    } else {
+      setRequests(prev => [newReq, ...prev]);
+    }
+
+    return { success: true, message: 'Enrollment request submitted successfully to instructor.' };
   };
 
-  const approveRequest = (requestId: string) => {
+  const approveRequest = async (requestId: string) => {
     const req = requests.find(r => r.id === requestId);
     if (!req) return;
 
-    // Check if enrollment exists
     const exists = enrollments.some(e => e.courseId === req.courseId && e.studentUid === req.studentId);
+    const enrId = `enr_${Date.now()}`;
+
     if (!exists) {
       const newEnrollment: CourseEnrollment = {
-        id: `enr_${Date.now()}`,
+        id: enrId,
         courseId: req.courseId,
         studentUid: req.studentId,
         studentName: req.studentName,
@@ -169,25 +252,49 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         enrolledAt: new Date().toISOString(),
         status: 'active'
       };
-      setEnrollments(prev => [...prev, newEnrollment]);
 
-      // Update course count
-      setCourses(prev => prev.map(c => c.id === req.courseId ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 } : c));
+      if (isLiveFirebaseConfigured) {
+        await setDoc(doc(db, 'enrollments', enrId), newEnrollment);
+        const course = courses.find(c => c.id === req.courseId);
+        if (course) {
+          await updateDoc(doc(db, 'courses', req.courseId), {
+            enrolledCount: (course.enrolledCount || 0) + 1
+          });
+        }
+      } else {
+        setEnrollments(prev => [...prev, newEnrollment]);
+        setCourses(prev => prev.map(c => c.id === req.courseId ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 } : c));
+      }
     }
 
-    setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: 'approved', reviewedAt: new Date().toISOString() } : r));
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'enrollmentRequests', requestId), {
+        status: 'approved',
+        reviewedAt: new Date().toISOString()
+      });
+    } else {
+      setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: 'approved', reviewedAt: new Date().toISOString() } : r));
+    }
   };
 
-  const rejectRequest = (requestId: string, reason?: string) => {
-    setRequests(prev => prev.map(r => r.id === requestId ? { 
-      ...r, 
-      status: 'rejected', 
-      reviewedAt: new Date().toISOString(),
-      decisionReason: reason || 'Application criteria not met'
-    } : r));
+  const rejectRequest = async (requestId: string, reason?: string) => {
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'enrollmentRequests', requestId), {
+        status: 'rejected',
+        reviewedAt: new Date().toISOString(),
+        decisionReason: reason || 'Application criteria not met'
+      });
+    } else {
+      setRequests(prev => prev.map(r => r.id === requestId ? { 
+        ...r, 
+        status: 'rejected', 
+        reviewedAt: new Date().toISOString(),
+        decisionReason: reason || 'Application criteria not met'
+      } : r));
+    }
   };
 
-  const manuallyEnrollStudent = (
+  const manuallyEnrollStudent = async (
     courseId: string, 
     studentUid: string, 
     studentName: string, 
@@ -200,8 +307,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const exists = enrollments.some(e => e.courseId === courseId && e.studentUid === studentUid && e.status === 'active');
     if (exists) return { success: false, message: 'Student is already enrolled.' };
 
+    const enrId = `enr_${Date.now()}`;
     const newEnrollment: CourseEnrollment = {
-      id: `enr_${Date.now()}`,
+      id: enrId,
       courseId,
       studentUid,
       studentName,
@@ -210,27 +318,48 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       enrolledAt: new Date().toISOString(),
       status: 'active'
     };
-    setEnrollments(prev => [...prev, newEnrollment]);
-    setCourses(prev => prev.map(c => c.id === courseId ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 } : c));
+
+    if (isLiveFirebaseConfigured) {
+      await setDoc(doc(db, 'enrollments', enrId), newEnrollment);
+      await updateDoc(doc(db, 'courses', courseId), {
+        enrolledCount: (course.enrolledCount || 0) + 1
+      });
+    } else {
+      setEnrollments(prev => [...prev, newEnrollment]);
+      setCourses(prev => prev.map(c => c.id === courseId ? { ...c, enrolledCount: (c.enrolledCount || 0) + 1 } : c));
+    }
+
     return { success: true, message: `${studentName} was successfully enrolled.` };
   };
 
-  const removeStudentFromCourse = (courseId: string, studentUid: string) => {
-    // Soft removal from active enrollment (preserves historical attendance records per requirement #9)
-    setEnrollments(prev => prev.filter(e => !(e.courseId === courseId && e.studentUid === studentUid)));
-    setCourses(prev => prev.map(c => c.id === courseId ? { ...c, enrolledCount: Math.max(0, (c.enrolledCount || 1) - 1) } : c));
+  const removeStudentFromCourse = async (courseId: string, studentUid: string) => {
+    const enr = enrollments.find(e => e.courseId === courseId && e.studentUid === studentUid);
+    const course = courses.find(c => c.id === courseId);
+
+    if (isLiveFirebaseConfigured && enr) {
+      await deleteDoc(doc(db, 'enrollments', enr.id));
+      if (course) {
+        await updateDoc(doc(db, 'courses', courseId), {
+          enrolledCount: Math.max(0, (course.enrolledCount || 1) - 1)
+        });
+      }
+    } else {
+      setEnrollments(prev => prev.filter(e => !(e.courseId === courseId && e.studentUid === studentUid)));
+      setCourses(prev => prev.map(c => c.id === courseId ? { ...c, enrolledCount: Math.max(0, (c.enrolledCount || 1) - 1) } : c));
+    }
   };
 
   // Session actions
-  const startAttendanceSession = (
+  const startAttendanceSession = async (
     courseId: string, 
     teacherId: string, 
     lectureTopic: string, 
     qrRefreshIntervalSeconds: 3 | 5
   ) => {
     const course = courses.find(c => c.id === courseId);
+    const sessId = `sess_${Date.now()}`;
     const newSession: AttendanceSession = {
-      id: `sess_${Date.now()}`,
+      id: sessId,
       courseId,
       courseCode: course?.courseCode || 'CRS',
       courseName: course?.courseName || 'Lecture Session',
@@ -242,34 +371,61 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       totalPresent: 0,
       createdAt: new Date().toISOString()
     };
-    setSessions(prev => [newSession, ...prev]);
+
+    if (isLiveFirebaseConfigured) {
+      await setDoc(doc(db, 'attendanceSessions', sessId), newSession);
+    } else {
+      setSessions(prev => [newSession, ...prev]);
+    }
+
     return newSession;
   };
 
-  const updateSessionToken = (sessionId: string, token: string, expiresAt: number) => {
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, currentQrToken: token, tokenExpiresAt: expiresAt } : s));
+  const updateSessionToken = async (sessionId: string, token: string, expiresAt: number) => {
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'attendanceSessions', sessionId), {
+        currentQrToken: token,
+        tokenExpiresAt: expiresAt
+      });
+    } else {
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, currentQrToken: token, tokenExpiresAt: expiresAt } : s));
+    }
   };
 
-  const pauseSession = (sessionId: string) => {
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'paused' } : s));
+  const pauseSession = async (sessionId: string) => {
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'attendanceSessions', sessionId), { status: 'paused' });
+    } else {
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'paused' } : s));
+    }
   };
 
-  const resumeSession = (sessionId: string) => {
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'active' } : s));
+  const resumeSession = async (sessionId: string) => {
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'attendanceSessions', sessionId), { status: 'active' });
+    } else {
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'active' } : s));
+    }
   };
 
-  const endSession = (sessionId: string) => {
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'ended', endedAt: new Date().toISOString() } : s));
+  const endSession = async (sessionId: string) => {
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'attendanceSessions', sessionId), { 
+        status: 'ended', 
+        endedAt: new Date().toISOString() 
+      });
+    } else {
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'ended', endedAt: new Date().toISOString() } : s));
+    }
   };
 
-  // Core Server-Side Validation Simulation for QR Scan
-  const verifyAndRecordAttendance = (
+  // Real-time verification
+  const verifyAndRecordAttendance = async (
     token: string, 
     studentUid: string, 
     studentName: string, 
     studentRollNo: string
   ) => {
-    // 1. Parse token format: "SA_TOKEN::{sessionId}::{timestamp}::{nonce}"
     if (!token || !token.startsWith('SA_TOKEN::')) {
       return { success: false, message: 'Invalid QR code format. Please scan an authentic SmartAttend QR code.' };
     }
@@ -283,7 +439,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const tokenTime = parseInt(tokenTimestampStr, 10);
     const now = Date.now();
 
-    // 2. Locate active session
     const session = sessions.find(s => s.id === sessionId);
     if (!session) {
       return { success: false, message: 'Attendance session not found.' };
@@ -297,8 +452,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, message: 'The attendance session is temporarily paused by the instructor.' };
     }
 
-    // 3. Strict Server-Side Expiry Check
-    // Token validity window: interval (3s or 5s) + 2.5s network leeway tolerance
+    // Server-Side Expiry Check
     const maxAllowedAgeMs = (session.qrRefreshIntervalSeconds * 1000) + 2500;
     if (now - tokenTime > maxAllowedAgeMs) {
       return { 
@@ -307,7 +461,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // 4. Enrollment Check: verify student is enrolled in the course
+    // Enrollment Check
     const isEnrolled = enrollments.some(e => e.courseId === session.courseId && e.studentUid === studentUid && e.status === 'active');
     if (!isEnrolled) {
       return { 
@@ -316,7 +470,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // 5. Idempotency & Duplicate Check: prevent double-scanning
+    // Idempotency Check
     const alreadyMarked = attendanceRecords.some(r => r.sessionId === sessionId && r.studentUid === studentUid);
     if (alreadyMarked) {
       return { 
@@ -325,10 +479,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // 6. Record Attendance
+    // Record Attendance
     const markedAt = new Date().toISOString();
+    const recordId = `rec_${sessionId}_${studentUid}`;
     const newRecord: AttendanceRecord = {
-      id: `rec_${sessionId}_${studentUid}`,
+      id: recordId,
       sessionId,
       courseId: session.courseId,
       studentUid,
@@ -340,10 +495,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       verified: true
     };
 
-    setAttendanceRecords(prev => [newRecord, ...prev]);
-
-    // Update session present count
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s));
+    if (isLiveFirebaseConfigured) {
+      await setDoc(doc(db, 'attendanceRecords', recordId), newRecord);
+      await updateDoc(doc(db, 'attendanceSessions', sessionId), {
+        totalPresent: (session.totalPresent || 0) + 1
+      });
+    } else {
+      setAttendanceRecords(prev => [newRecord, ...prev]);
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s));
+    }
 
     return { 
       success: true, 
@@ -354,11 +514,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   };
 
-  const updateAttendanceStatus = (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => {
-    setAttendanceRecords(prev => prev.map(r => r.id === recordId ? { 
-      ...r, 
-      status: newStatus 
-    } : r));
+  const updateAttendanceStatus = async (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => {
+    if (isLiveFirebaseConfigured) {
+      await updateDoc(doc(db, 'attendanceRecords', recordId), { status: newStatus });
+    } else {
+      setAttendanceRecords(prev => prev.map(r => r.id === recordId ? { ...r, status: newStatus } : r));
+    }
     console.info(`[AUDIT] Record ${recordId} changed to ${newStatus}. Reason: ${reason}`);
   };
 
@@ -398,4 +559,3 @@ export const useData = () => {
   }
   return context;
 };
-

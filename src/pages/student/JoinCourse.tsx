@@ -19,9 +19,9 @@ export const JoinCourse: React.FC = () => {
     c.teacherName.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleRequest = (courseId: string) => {
+  const handleRequest = async (courseId: string) => {
     if (!currentUser) return;
-    const res = requestEnrollment(
+    const res = await requestEnrollment(
       currentUser.uid,
       currentUser.fullName,
       currentUser.studentId || 'STUDENT',

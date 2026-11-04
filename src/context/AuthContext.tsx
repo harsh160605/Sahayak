@@ -1,16 +1,37 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole } from '../types';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  sendPasswordResetEmail
+} from 'firebase/auth';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc 
+} from 'firebase/firestore';
+import { auth, db, isLiveFirebaseConfigured } from '../config/firebase';
 
 interface AuthContextType {
   currentUser: UserProfile | null;
   loading: boolean;
+  isLiveFirebase: boolean;
+  loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
+  registerUser: (
+    email: string, 
+    pass: string, 
+    profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt'>
+  ) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   loginAsDemoUser: (role: UserRole) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   switchUserRole: (role: UserRole) => void;
 }
 
-// Initial preloaded realistic college profiles for immediate testing & prototype presentation
 export const DEMO_TEACHER: UserProfile = {
   uid: 'teacher_prof_sharma',
   fullName: 'Dr. Alok Sharma',
@@ -39,47 +60,155 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('smartattend_current_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return DEMO_TEACHER;
+    // If live Firebase is configured, start clean or wait for onAuthStateChanged
+    if (isLiveFirebaseConfigured) {
+      const saved = localStorage.getItem('smartattend_current_user');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          // Only use if not a demo fallback UID
+          if (!parsed.uid.startsWith('teacher_prof_') && !parsed.uid.startsWith('student_aarav_')) {
+            return parsed;
+          }
+        } catch {
+          return null;
+        }
       }
+      return null;
     }
-    return DEMO_TEACHER; // Default to Dr. Alok Sharma on first visit for effortless evaluation
+    // Default demo prototype fallback
+    return DEMO_TEACHER;
   });
-  
-  const [loading, setLoading] = useState<boolean>(false);
 
+  const [loading, setLoading] = useState<boolean>(isLiveFirebaseConfigured);
+
+  // Sync with actual Firebase Auth state
   useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('smartattend_current_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('smartattend_current_user');
+    if (!isLiveFirebaseConfigured) {
+      setLoading(false);
+      return;
     }
-  }, [currentUser]);
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const profile = userDoc.data() as UserProfile;
+            setCurrentUser(profile);
+            localStorage.setItem('smartattend_current_user', JSON.stringify(profile));
+          } else {
+            console.warn('Firebase user exists but no Firestore profile found.');
+          }
+        } catch (e) {
+          console.error('Failed to fetch Firestore user profile:', e);
+        }
+      } else {
+        // User logged out from Firebase
+        const saved = localStorage.getItem('smartattend_current_user');
+        if (saved && !saved.includes('teacher_prof_') && !saved.includes('student_aarav_')) {
+          setCurrentUser(null);
+          localStorage.removeItem('smartattend_current_user');
+        }
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const loginWithEmail = async (email: string, pass: string) => {
+    if (!isLiveFirebaseConfigured) {
+      return { success: false, error: 'Live Firebase is not configured. Use demo login or enter .env keys.' };
+    }
+    try {
+      setLoading(true);
+      const cred = await signInWithEmailAndPassword(auth, email, pass);
+      const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
+      if (userDoc.exists()) {
+        const profile = userDoc.data() as UserProfile;
+        setCurrentUser(profile);
+        localStorage.setItem('smartattend_current_user', JSON.stringify(profile));
+        return { success: true };
+      }
+      return { success: false, error: 'User authenticated, but no profile document found in Firestore.' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Login failed.' };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const registerUser = async (
+    email: string, 
+    pass: string, 
+    profileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt'>
+  ) => {
+    if (!isLiveFirebaseConfigured) {
+      return { success: false, error: 'Live Firebase is not configured.' };
+    }
+    try {
+      setLoading(true);
+      const cred = await createUserWithEmailAndPassword(auth, email, pass);
+      const newProfile: UserProfile = {
+        ...profileData,
+        uid: cred.user.uid,
+        email,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'users', cred.user.uid), newProfile);
+      setCurrentUser(newProfile);
+      localStorage.setItem('smartattend_current_user', JSON.stringify(newProfile));
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Registration failed.' };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to send password reset.' };
+    }
+  };
 
   const loginAsDemoUser = (role: UserRole) => {
-    setLoading(true);
-    setTimeout(() => {
-      setCurrentUser(role === 'teacher' ? DEMO_TEACHER : DEMO_STUDENT);
-      setLoading(false);
-    }, 200);
+    const user = role === 'teacher' ? DEMO_TEACHER : DEMO_STUDENT;
+    setCurrentUser(user);
+    localStorage.setItem('smartattend_current_user', JSON.stringify(user));
   };
 
   const switchUserRole = (role: UserRole) => {
-    setCurrentUser(role === 'teacher' ? DEMO_TEACHER : DEMO_STUDENT);
+    loginAsDemoUser(role);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    if (isLiveFirebaseConfigured && auth.currentUser) {
+      await signOut(auth);
+    }
     setCurrentUser(null);
+    localStorage.removeItem('smartattend_current_user');
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!currentUser) return;
     const updated = { ...currentUser, ...updates, updatedAt: new Date().toISOString() };
     setCurrentUser(updated);
+    localStorage.setItem('smartattend_current_user', JSON.stringify(updated));
+
+    if (isLiveFirebaseConfigured && auth.currentUser) {
+      try {
+        await updateDoc(doc(db, 'users', currentUser.uid), updates);
+      } catch (e) {
+        console.error('Failed to sync profile update to Firestore:', e);
+      }
+    }
   };
 
   return (
@@ -87,6 +216,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         loading,
+        isLiveFirebase: isLiveFirebaseConfigured,
+        loginWithEmail,
+        registerUser,
+        resetPassword,
         loginAsDemoUser,
         logout,
         updateProfile,
@@ -105,4 +238,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

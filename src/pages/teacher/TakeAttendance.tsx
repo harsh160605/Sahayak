@@ -18,11 +18,11 @@ export const TakeAttendance: React.FC = () => {
   const [lectureTopic, setLectureTopic] = useState('');
   const [refreshInterval, setRefreshInterval] = useState<3 | 5>(3);
 
-  const handleStart = (e: React.FormEvent) => {
+  const handleStart = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !selectedCourseId) return;
 
-    const newSession = startAttendanceSession(
+    const newSession = await startAttendanceSession(
       selectedCourseId,
       currentUser.uid,
       lectureTopic || 'Lecture Session',

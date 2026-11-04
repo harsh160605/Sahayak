@@ -75,11 +75,11 @@ export const StudentQRScanner: React.FC = () => {
     setScanning(false);
   };
 
-  const handleScanSuccess = (token: string) => {
+  const handleScanSuccess = async (token: string) => {
     if (!currentUser) return;
 
     // Trigger server-side validation
-    const result = verifyAndRecordAttendance(
+    const result = await verifyAndRecordAttendance(
       token,
       currentUser.uid,
       currentUser.fullName,
