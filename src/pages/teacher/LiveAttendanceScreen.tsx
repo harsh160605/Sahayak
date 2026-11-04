@@ -15,7 +15,8 @@ import {
   Eye,
   EyeOff,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  MapPin
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { formatTime } from '../../lib/utils';
@@ -252,6 +253,12 @@ export const LiveAttendanceScreen: React.FC = () => {
                   <ShieldCheck className="h-4 w-4" />
                   <span>Cryptographic Dynamic Anti-Proxy</span>
                 </div>
+                {session.geofence?.enabled && (
+                  <div className="flex items-center justify-center gap-1.5 text-xs font-mono text-emerald-400 font-bold bg-navy-800 py-1 px-3 rounded-full border border-teal-500/30">
+                    <MapPin className="h-3.5 w-3.5 text-teal-400" />
+                    <span>GPS Geofenced ({session.geofence.radiusMeters}m perimeter)</span>
+                  </div>
+                )}
                 <p className="text-sm text-navy-300">
                   Open SmartAttend on your phone and scan with your camera. Screenshots expire in {refreshInterval} seconds.
                 </p>

@@ -57,6 +57,14 @@ export interface CourseEnrollment {
   status: 'active' | 'suspended';
 }
 
+export interface GeoLocationConfig {
+  enabled: boolean;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number; // e.g. 50m, 100m, 200m
+  locationName?: string;
+}
+
 export interface AttendanceSession {
   id: string;
   courseId: string;
@@ -72,6 +80,8 @@ export interface AttendanceSession {
   tokenExpiresAt?: number;
   totalPresent?: number;
   createdAt: string;
+  // Geofencing additions
+  geofence?: GeoLocationConfig;
 }
 
 export interface AttendanceRecord {
@@ -85,5 +95,26 @@ export interface AttendanceRecord {
   status: 'present' | 'absent' | 'late' | 'excused';
   source: 'qr_scan' | 'manual_teacher';
   verified: boolean;
+  studentCoordinates?: {
+    latitude: number;
+    longitude: number;
+    distanceMeters?: number;
+  };
 }
 
+export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
+
+export interface TimetableSlot {
+  id: string;
+  courseId: string;
+  courseCode: string;
+  courseName: string;
+  teacherId: string;
+  teacherName: string;
+  dayOfWeek: DayOfWeek;
+  startTime: string; // e.g. "09:00"
+  endTime: string;   // e.g. "10:00"
+  room: string;      // e.g. "Hall 302" or "Lab 4"
+  semester: string;
+  department: string;
+}

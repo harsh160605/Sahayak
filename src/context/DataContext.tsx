@@ -4,14 +4,17 @@ import {
   CourseEnrollment, 
   EnrollmentRequest, 
   AttendanceSession, 
-  AttendanceRecord 
+  AttendanceRecord,
+  TimetableSlot,
+  GeoLocationConfig
 } from '../types';
 import { 
   INITIAL_COURSES, 
   INITIAL_ENROLLMENTS, 
   INITIAL_REQUESTS, 
   INITIAL_SESSIONS, 
-  INITIAL_ATTENDANCE_RECORDS 
+  INITIAL_ATTENDANCE_RECORDS,
+  INITIAL_TIMETABLE
 } from '../data/initialData';
 import { 
   collection, 
@@ -19,11 +22,10 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
-  onSnapshot, 
-  query, 
-  orderBy 
+  onSnapshot 
 } from 'firebase/firestore';
 import { db, isLiveFirebaseConfigured } from '../config/firebase';
+import { calculateDistanceMeters } from '../lib/utils';
 
 interface DataContextType {
   courses: Course[];
@@ -31,6 +33,7 @@ interface DataContextType {
   requests: EnrollmentRequest[];
   sessions: AttendanceSession[];
   attendanceRecords: AttendanceRecord[];
+  timetable: TimetableSlot[];
   
   // Course actions
   addCourse: (course: Omit<Course, 'id' | 'createdAt' | 'status' | 'enrolledCount'>) => Promise<Course>;
@@ -44,20 +47,31 @@ interface DataContextType {
   removeStudentFromCourse: (courseId: string, studentUid: string) => Promise<void>;
   
   // Session & QR actions
-  startAttendanceSession: (courseId: string, teacherId: string, lectureTopic: string, qrRefreshIntervalSeconds: 3 | 5) => Promise<AttendanceSession>;
+  startAttendanceSession: (
+    courseId: string, 
+    teacherId: string, 
+    lectureTopic: string, 
+    qrRefreshIntervalSeconds: 3 | 5,
+    geofence?: GeoLocationConfig
+  ) => Promise<AttendanceSession>;
   updateSessionToken: (sessionId: string, token: string, expiresAt: number) => Promise<void>;
   pauseSession: (sessionId: string) => Promise<void>;
   resumeSession: (sessionId: string) => Promise<void>;
   endSession: (sessionId: string) => Promise<void>;
   
-  // Live attendance verification & recording
+  // Live attendance verification & recording (with Geofencing coordinates)
   verifyAndRecordAttendance: (
     token: string, 
     studentUid: string, 
     studentName: string, 
-    studentRollNo: string
-  ) => Promise<{ success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string }>;
+    studentRollNo: string,
+    studentCoords?: { latitude: number; longitude: number }
+  ) => Promise<{ success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string; distanceMeters?: number }>;
   
+  // Timetable Actions
+  addTimetableSlot: (slot: Omit<TimetableSlot, 'id'>) => Promise<TimetableSlot>;
+  deleteTimetableSlot: (slotId: string) => Promise<void>;
+
   // Correction & manual overrides
   updateAttendanceStatus: (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => Promise<void>;
 }
@@ -95,30 +109,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : INITIAL_ATTENDANCE_RECORDS;
   });
 
+  const [timetable, setTimetable] = useState<TimetableSlot[]>(() => {
+    if (isLiveFirebaseConfigured) return [];
+    const saved = localStorage.getItem('smartattend_timetable');
+    return saved ? JSON.parse(saved) : INITIAL_TIMETABLE;
+  });
+
   // Real-time Firestore Sync Listeners
   useEffect(() => {
     if (!isLiveFirebaseConfigured) {
-      // Offline fallback: sync to localStorage
       localStorage.setItem('smartattend_courses', JSON.stringify(courses));
       localStorage.setItem('smartattend_enrollments', JSON.stringify(enrollments));
       localStorage.setItem('smartattend_requests', JSON.stringify(requests));
       localStorage.setItem('smartattend_sessions', JSON.stringify(sessions));
       localStorage.setItem('smartattend_attendance_records', JSON.stringify(attendanceRecords));
+      localStorage.setItem('smartattend_timetable', JSON.stringify(timetable));
       return;
     }
 
-    // 1. Listen to Courses collection in Cloud Firestore
+    // 1. Courses
     const unsubCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
       const items: Course[] = [];
       snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
-      // Sort newest first
       items.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setCourses(items);
     });
 
-    // 2. Listen to Enrollments
+    // 2. Enrollments
     const unsubEnrollments = onSnapshot(collection(db, 'enrollments'), (snapshot) => {
       const items: CourseEnrollment[] = [];
       snapshot.forEach((docSnap) => {
@@ -127,7 +146,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setEnrollments(items);
     });
 
-    // 3. Listen to Enrollment Requests
+    // 3. Requests
     const unsubRequests = onSnapshot(collection(db, 'enrollmentRequests'), (snapshot) => {
       const items: EnrollmentRequest[] = [];
       snapshot.forEach((docSnap) => {
@@ -137,7 +156,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRequests(items);
     });
 
-    // 4. Listen to Attendance Sessions
+    // 4. Sessions
     const unsubSessions = onSnapshot(collection(db, 'attendanceSessions'), (snapshot) => {
       const items: AttendanceSession[] = [];
       snapshot.forEach((docSnap) => {
@@ -147,7 +166,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSessions(items);
     });
 
-    // 5. Listen to Attendance Records
+    // 5. Attendance Records
     const unsubAttendance = onSnapshot(collection(db, 'attendanceRecords'), (snapshot) => {
       const items: AttendanceRecord[] = [];
       snapshot.forEach((docSnap) => {
@@ -157,12 +176,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAttendanceRecords(items);
     });
 
+    // 6. Timetable Slots
+    const unsubTimetable = onSnapshot(collection(db, 'timetable'), (snapshot) => {
+      const items: TimetableSlot[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      setTimetable(items);
+    });
+
     return () => {
       unsubCourses();
       unsubEnrollments();
       unsubRequests();
       unsubSessions();
       unsubAttendance();
+      unsubTimetable();
     };
   }, [isLiveFirebaseConfigured]);
 
@@ -349,12 +378,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Session actions
+  // Session actions with Geofence configuration
   const startAttendanceSession = async (
     courseId: string, 
     teacherId: string, 
     lectureTopic: string, 
-    qrRefreshIntervalSeconds: 3 | 5
+    qrRefreshIntervalSeconds: 3 | 5,
+    geofence?: GeoLocationConfig
   ) => {
     const course = courses.find(c => c.id === courseId);
     const sessId = `sess_${Date.now()}`;
@@ -369,7 +399,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       status: 'active',
       qrRefreshIntervalSeconds,
       totalPresent: 0,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...(geofence ? { geofence } : {})
     };
 
     if (isLiveFirebaseConfigured) {
@@ -419,12 +450,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Real-time verification
+  // Real-time verification with GPS Geofencing
   const verifyAndRecordAttendance = async (
     token: string, 
     studentUid: string, 
     studentName: string, 
-    studentRollNo: string
+    studentRollNo: string,
+    studentCoords?: { latitude: number; longitude: number }
   ) => {
     if (!token || !token.startsWith('SA_TOKEN::')) {
       return { success: false, message: 'Invalid QR code format. Please scan an authentic SmartAttend QR code.' };
@@ -452,7 +484,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, message: 'The attendance session is temporarily paused by the instructor.' };
     }
 
-    // Server-Side Expiry Check
+    // 1. Server-Side Expiry Check
     const maxAllowedAgeMs = (session.qrRefreshIntervalSeconds * 1000) + 2500;
     if (now - tokenTime > maxAllowedAgeMs) {
       return { 
@@ -461,7 +493,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // Enrollment Check
+    // 2. Geofence Perimeter Validation
+    let distanceMeters: number | undefined;
+    if (session.geofence?.enabled) {
+      if (!studentCoords) {
+        return {
+          success: false,
+          message: 'GPS location is required for this lecture. Please enable location permissions on your device.'
+        };
+      }
+
+      distanceMeters = calculateDistanceMeters(
+        session.geofence.latitude,
+        session.geofence.longitude,
+        studentCoords.latitude,
+        studentCoords.longitude
+      );
+
+      if (distanceMeters > session.geofence.radiusMeters) {
+        return {
+          success: false,
+          message: `Location check failed: You are ${distanceMeters}m away from the classroom perimeter (Maximum allowed: ${session.geofence.radiusMeters}m). Attendance rejected.`,
+          distanceMeters
+        };
+      }
+    }
+
+    // 3. Enrollment Check
     const isEnrolled = enrollments.some(e => e.courseId === session.courseId && e.studentUid === studentUid && e.status === 'active');
     if (!isEnrolled) {
       return { 
@@ -470,7 +528,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // Idempotency Check
+    // 4. Idempotency Check
     const alreadyMarked = attendanceRecords.some(r => r.sessionId === sessionId && r.studentUid === studentUid);
     if (alreadyMarked) {
       return { 
@@ -479,7 +537,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // Record Attendance
+    // 5. Record Attendance
     const markedAt = new Date().toISOString();
     const recordId = `rec_${sessionId}_${studentUid}`;
     const newRecord: AttendanceRecord = {
@@ -492,7 +550,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       markedAt,
       status: 'present',
       source: 'qr_scan',
-      verified: true
+      verified: true,
+      ...(studentCoords ? {
+        studentCoordinates: {
+          latitude: studentCoords.latitude,
+          longitude: studentCoords.longitude,
+          distanceMeters
+        }
+      } : {})
     };
 
     if (isLiveFirebaseConfigured) {
@@ -507,11 +572,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return { 
       success: true, 
-      message: 'Attendance recorded successfully!', 
+      message: session.geofence?.enabled 
+        ? `Attendance verified! Physical presence confirmed (${distanceMeters}m from instructor).`
+        : 'Attendance recorded successfully!', 
       courseName: `${session.courseCode} — ${session.courseName}`,
       sessionTopic: session.lectureTopic,
-      markedAt
+      markedAt,
+      distanceMeters
     };
+  };
+
+  // Timetable slot management
+  const addTimetableSlot = async (slotData: Omit<TimetableSlot, 'id'>) => {
+    const slotId = `slot_${Date.now()}`;
+    const newSlot: TimetableSlot = { ...slotData, id: slotId };
+
+    if (isLiveFirebaseConfigured) {
+      await setDoc(doc(db, 'timetable', slotId), newSlot);
+    } else {
+      setTimetable(prev => [...prev, newSlot]);
+    }
+    return newSlot;
+  };
+
+  const deleteTimetableSlot = async (slotId: string) => {
+    if (isLiveFirebaseConfigured) {
+      await deleteDoc(doc(db, 'timetable', slotId));
+    } else {
+      setTimetable(prev => prev.filter(s => s.id !== slotId));
+    }
   };
 
   const updateAttendanceStatus = async (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => {
@@ -531,6 +620,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requests,
         sessions,
         attendanceRecords,
+        timetable,
         addCourse,
         updateCourse,
         requestEnrollment,
@@ -544,6 +634,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resumeSession,
         endSession,
         verifyAndRecordAttendance,
+        addTimetableSlot,
+        deleteTimetableSlot,
         updateAttendanceStatus
       }}
     >

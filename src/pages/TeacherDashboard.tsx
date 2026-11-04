@@ -56,6 +56,12 @@ export const TeacherDashboard: React.FC = () => {
             <span>Launch Live Attendance</span>
           </Link>
           <Link
+            to="/teacher/timetable"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-surface border border-warm-300 text-navy-800 hover:bg-warm-100 text-xs font-semibold shadow-subtle transition-colors"
+          >
+            <span>Timetable</span>
+          </Link>
+          <Link
             to="/teacher/courses"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-surface border border-warm-300 text-navy-800 hover:bg-warm-100 text-xs font-semibold shadow-subtle transition-colors"
           >

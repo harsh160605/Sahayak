@@ -11,7 +11,8 @@ import {
   User, 
   LogOut,
   GraduationCap,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -29,6 +30,7 @@ export const Sidebar: React.FC = () => {
   const teacherNavItems = [
     { label: 'Dashboard', to: '/teacher', icon: LayoutDashboard },
     { label: 'My Courses', to: '/teacher/courses', icon: BookOpen },
+    { label: 'Class Timetable', to: '/teacher/timetable', icon: Calendar },
     { label: 'Manage Students', to: '/teacher/students', icon: Users },
     { label: 'Take Attendance', to: '/teacher/take-attendance', icon: QrCode },
     { label: 'Attendance History', to: '/teacher/history', icon: History },
@@ -44,6 +46,7 @@ export const Sidebar: React.FC = () => {
 
   const studentNavItems = [
     { label: 'Dashboard', to: '/student', icon: LayoutDashboard },
+    { label: 'Class Timetable', to: '/student/timetable', icon: Calendar },
     { label: 'My Courses', to: '/student/courses', icon: BookOpen },
     { label: 'Scan QR Attendance', to: '/student/scan', icon: QrCode, highlight: true },
     { label: 'Attendance History', to: '/student/history', icon: History },

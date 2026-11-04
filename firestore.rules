@@ -35,5 +35,10 @@ service cloud.firestore {
     match /attendanceRecords/{recordId} {
       allow read, write: if isAuthenticated();
     }
+
+    // 7. Timetable Schedule Collection
+    match /timetable/{slotId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

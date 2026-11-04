@@ -8,7 +8,8 @@ import {
   RefreshCw, 
   ShieldCheck, 
   Sparkles,
-  ArrowRight
+  MapPin,
+  Navigation
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -21,20 +22,60 @@ export const StudentQRScanner: React.FC = () => {
 
   const [scanning, setScanning] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [studentCoords, setStudentCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locating, setLocating] = useState<boolean>(false);
+  const [locatingError, setLocatingError] = useState<string | null>(null);
+
   const [scanResult, setScanResult] = useState<{
     success: boolean;
     message: string;
     courseName?: string;
     sessionTopic?: string;
     markedAt?: string;
+    distanceMeters?: number;
   } | null>(null);
   
   const [simulatedTokenInput, setSimulatedTokenInput] = useState<string>('');
   const scannerRef = useRef<any>(null);
 
+  // Request GPS coordinates for geofencing compliance
+  const acquireGPSLocation = (): Promise<{ latitude: number; longitude: number } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        setLocatingError('Geolocation not supported by device.');
+        resolve(null);
+        return;
+      }
+
+      setLocating(true);
+      setLocatingError(null);
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const coords = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
+          };
+          setStudentCoords(coords);
+          setLocating(false);
+          resolve(coords);
+        },
+        (err) => {
+          setLocatingError(`Location permission required: ${err.message}`);
+          setLocating(false);
+          resolve(null);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+  };
+
   const startScanner = async () => {
     setCameraError(null);
     setScanResult(null);
+
+    // Acquire GPS silently at scanner startup
+    acquireGPSLocation();
 
     try {
       const html5QrCode = new Html5Qrcode('qr-reader-container');
@@ -78,12 +119,19 @@ export const StudentQRScanner: React.FC = () => {
   const handleScanSuccess = async (token: string) => {
     if (!currentUser) return;
 
-    // Trigger server-side validation
+    // Check GPS coords
+    let coords = studentCoords;
+    if (!coords) {
+      coords = await acquireGPSLocation();
+    }
+
+    // Trigger server-side validation with geofence
     const result = await verifyAndRecordAttendance(
       token,
       currentUser.uid,
       currentUser.fullName,
-      currentUser.studentId || 'STUDENT'
+      currentUser.studentId || 'STUDENT',
+      coords || undefined
     );
 
     setScanResult(result);
@@ -100,6 +148,7 @@ export const StudentQRScanner: React.FC = () => {
   };
 
   useEffect(() => {
+    acquireGPSLocation();
     return () => {
       stopScanner();
     };
@@ -145,10 +194,45 @@ export const StudentQRScanner: React.FC = () => {
                   <p><strong>Course:</strong> {scanResult.courseName}</p>
                   <p><strong>Topic:</strong> {scanResult.sessionTopic}</p>
                   <p><strong>Timestamp:</strong> {formatTime(scanResult.markedAt || '')}</p>
+                  {scanResult.distanceMeters !== undefined && (
+                    <p className="text-teal-700"><strong>GPS Proximity:</strong> ~{scanResult.distanceMeters}m from instructor</p>
+                  )}
                 </div>
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Geofencing Location Status Badge */}
+      <div className="flex items-center justify-between p-3 rounded-lg bg-surface border border-warm-300 text-xs shadow-subtle">
+        <div className="flex items-center gap-2">
+          <MapPin className={`h-4 w-4 ${studentCoords ? 'text-primary' : 'text-navy-400'}`} />
+          <div>
+            <span className="font-semibold text-navy-900">GPS Classroom Perimeter Status: </span>
+            {studentCoords ? (
+              <span className="text-emerald-700 font-mono font-medium">Locked ({studentCoords.latitude.toFixed(4)}, {studentCoords.longitude.toFixed(4)})</span>
+            ) : locating ? (
+              <span className="text-amber-700 italic">Acquiring GPS fix...</span>
+            ) : (
+              <span className="text-navy-500 italic">Location unverified</span>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={acquireGPSLocation}
+          className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 font-mono"
+        >
+          <Navigation className="h-3 w-3" />
+          <span>{locating ? 'Locating...' : 'Refresh GPS'}</span>
+        </button>
+      </div>
+
+      {locatingError && (
+        <div className="p-2.5 rounded bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+          <span>{locatingError}</span>
         </div>
       )}
 
@@ -197,7 +281,7 @@ export const StudentQRScanner: React.FC = () => {
           </div>
         )}
 
-        {/* Quick Diagnostic / Simulation Token Entry (for desktop evaluation without webcam) */}
+        {/* Quick Diagnostic Token Entry for Testing */}
         <div className="pt-4 border-t border-warm-200">
           <span className="text-[11px] font-mono text-navy-500 uppercase tracking-wider block mb-2">
             Developer / One-Click Scanner Simulator
@@ -208,7 +292,7 @@ export const StudentQRScanner: React.FC = () => {
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="e.g. SA_TOKEN::sess_... (or click Auto-Fetch below)"
+              placeholder="e.g. SA_TOKEN::sess_... (or paste token)"
               value={simulatedTokenInput}
               onChange={e => setSimulatedTokenInput(e.target.value)}
               className="flex-1 px-3 py-2 text-xs rounded-md border border-warm-300 font-mono focus:outline-none focus:border-primary"

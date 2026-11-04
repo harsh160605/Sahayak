@@ -16,6 +16,7 @@ import { AttendanceHistory } from './pages/teacher/AttendanceHistory';
 import { AttendanceReports } from './pages/teacher/AttendanceReports';
 import { JoinCourse } from './pages/student/JoinCourse';
 import { Profile } from './pages/Profile';
+import { TimetableSchedule } from './pages/TimetableSchedule';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: 'teacher' | 'student' }> = ({ 
   children, 
@@ -58,6 +59,11 @@ export const App: React.FC = () => {
                   <TeacherCourses />
                 </ProtectedRoute>
               } />
+              <Route path="/teacher/timetable" element={
+                <ProtectedRoute allowedRole="teacher">
+                  <TimetableSchedule />
+                </ProtectedRoute>
+              } />
               <Route path="/teacher/students" element={
                 <ProtectedRoute allowedRole="teacher">
                   <ManageStudents />
@@ -93,6 +99,11 @@ export const App: React.FC = () => {
               <Route path="/student" element={
                 <ProtectedRoute allowedRole="student">
                   <StudentDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/student/timetable" element={
+                <ProtectedRoute allowedRole="student">
+                  <TimetableSchedule />
                 </ProtectedRoute>
               } />
               <Route path="/student/courses" element={
