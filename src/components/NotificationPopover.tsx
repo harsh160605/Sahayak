@@ -10,7 +10,7 @@ export const NotificationPopover: React.FC = () => {
   const popoverRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { requests, sessions, enrollments, courses } = useData();
+  const { requests, sessions, enrollments } = useData();
 
   const isTeacher = currentUser?.role === 'teacher';
 
@@ -33,7 +33,7 @@ export const NotificationPopover: React.FC = () => {
       notifications.push({
         id: 'pending-requests',
         title: `${pending.length} Pending Enrollment ${pending.length === 1 ? 'Request' : 'Requests'}`,
-        description: `Students waiting for access in ${pending[0].courseCode}`,
+        description: `Students waiting for admission in ${pending[0].courseCode}`,
         time: formatDate(pending[0].requestedAt),
         type: 'request',
         action: () => {
@@ -69,7 +69,7 @@ export const NotificationPopover: React.FC = () => {
       notifications.push({
         id: `student-live-${live.id}`,
         title: 'Active Lecture in Progress',
-        description: `${live.courseCode}: ${live.lectureTopic} — Scan QR now`,
+        description: `${live.courseCode}: ${live.lectureTopic} — Scan QR token now`,
         time: formatTime(live.startedAt),
         type: 'live_session',
         action: () => {
@@ -115,76 +115,76 @@ export const NotificationPopover: React.FC = () => {
     <div className="relative" ref={popoverRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-md text-navy-600 hover:text-navy-900 hover:bg-warm-200/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        title="Academic notices"
-        aria-label="Academic notices"
+        className="relative p-1.5 rounded-md text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+        title="Academic notifications"
+        aria-label="Academic notifications"
         aria-expanded={isOpen}
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
           <span className="absolute top-1 right-1 flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-surface rounded-xl border border-warm-300 shadow-elevated z-50 overflow-hidden animate-in fade-in duration-150">
-          <div className="px-4 py-3 border-b border-warm-200 flex items-center justify-between bg-warm-100">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xl z-50 overflow-hidden animate-in fade-in duration-150">
+          <div className="px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-navy-900">Academic Notifications</span>
+              <span className="text-xs font-bold text-slate-900 dark:text-white">Academic Notifications</span>
               {unreadCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-primary text-white">
+                <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-blue-600 text-white">
                   {unreadCount}
                 </span>
               )}
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="text-navy-400 hover:text-navy-700 p-0.5 rounded"
+              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5 rounded"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="max-h-80 overflow-y-auto divide-y divide-warm-100">
+          <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
             {notifications.length === 0 ? (
-              <div className="p-8 text-center text-xs text-navy-500 space-y-1">
-                <CheckCircle className="h-6 w-6 text-teal-600 mx-auto mb-1 opacity-75" />
-                <p className="font-semibold text-navy-800">All caught up</p>
-                <p className="text-[11px] text-navy-500">No pending requests or active session alerts right now.</p>
+              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
+                <CheckCircle className="h-6 w-6 text-emerald-600 mx-auto mb-1 opacity-75" />
+                <p className="font-semibold text-slate-800 dark:text-slate-200">All caught up</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">No pending alerts or active lecture notices right now.</p>
               </div>
             ) : (
               notifications.map(n => (
                 <div
                   key={n.id}
                   onClick={n.action}
-                  className="p-3.5 hover:bg-warm-100/80 cursor-pointer transition-colors flex items-start gap-3"
+                  className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-pointer transition-colors flex items-start gap-3"
                 >
-                  <div className="p-2 rounded-md bg-warm-200 text-primary shrink-0 mt-0.5">
+                  <div className="p-2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0 mt-0.5">
                     {n.type === 'live_session' ? (
                       <Radio className="h-4 w-4 text-emerald-600 animate-pulse" />
                     ) : n.type === 'request' ? (
-                      <UserCheck className="h-4 w-4 text-primary" />
+                      <UserCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     ) : (
-                      <CheckCircle className="h-4 w-4 text-teal-600" />
+                      <CheckCircle className="h-4 w-4 text-emerald-600" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold text-navy-900 truncate">{n.title}</p>
-                      <span className="text-[10px] font-mono text-navy-400 shrink-0">{n.time}</span>
+                      <p className="text-xs font-semibold text-slate-900 dark:text-white truncate">{n.title}</p>
+                      <span className="text-[10px] font-mono text-slate-400 shrink-0">{n.time}</span>
                     </div>
-                    <p className="text-[11px] text-navy-600 mt-0.5 line-clamp-2">{n.description}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{n.description}</p>
                   </div>
                 </div>
               ))
             )}
           </div>
 
-          <div className="p-2.5 bg-warm-50 border-t border-warm-200 text-center">
-            <span className="text-[10px] font-mono text-navy-500">SmartAttend Live Notifications</span>
+          <div className="p-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 text-center">
+            <span className="text-[10px] font-mono text-slate-400">SmartAttend Live System Notifications</span>
           </div>
         </div>
       )}

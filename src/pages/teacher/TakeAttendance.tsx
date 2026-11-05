@@ -6,14 +6,14 @@ import {
   QrCode, 
   Play, 
   Clock, 
-  Sparkles, 
   MapPin, 
   Navigation, 
   AlertCircle,
   Radio,
   ShieldCheck,
   CheckCircle2,
-  ArrowRight
+  ArrowRight,
+  Monitor
 } from 'lucide-react';
 import { GeoLocationConfig } from '../../types';
 
@@ -102,55 +102,57 @@ export const TakeAttendance: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Editorial Header */}
-      <div className="border-b border-warm-300 pb-4">
-        <span className="text-[11px] font-mono uppercase tracking-wider text-primary font-semibold">
-          SESSION INITIALIZER
-        </span>
-        <h1 className="text-2xl font-bold tracking-tight text-navy-900 mt-0.5">
+    <div className="max-w-3xl mx-auto space-y-5 animate-fade-in">
+      {/* Top Header */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900">
+            ROLL CALL INITIALIZER
+          </span>
+        </div>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
           Launch Live Attendance Session
         </h1>
-        <p className="text-xs text-navy-600 mt-1">
-          Initialize a rotating cryptographic QR session with optional GPS geofencing perimeter.
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          Initialize a rotating cryptographic QR session with optional GPS geofencing perimeter for classroom roll call.
         </p>
       </div>
 
       {/* Existing Active Session Alert */}
       {existingActiveSession && (
-        <div className="p-4 rounded-xl bg-teal-50 border border-teal-300 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
           <div className="flex items-center gap-3">
-            <Radio className="h-5 w-5 text-teal-700 animate-pulse shrink-0" />
+            <Radio className="h-5 w-5 text-blue-700 dark:text-blue-400 animate-pulse shrink-0" />
             <div>
-              <p className="text-xs font-bold text-teal-950 font-mono uppercase">
-                Active Session Already Running: {existingActiveSession.courseCode}
+              <p className="text-xs font-bold text-blue-950 dark:text-blue-200 font-mono uppercase">
+                Active Session In Progress: {existingActiveSession.courseCode}
               </p>
-              <p className="text-xs text-teal-800">
+              <p className="text-xs text-blue-800 dark:text-blue-300">
                 Topic: {existingActiveSession.lectureTopic} ({existingActiveSession.totalPresent || 0} students recorded)
               </p>
             </div>
           </div>
           <Link
             to={`/teacher/live-session?sessionId=${existingActiveSession.id}`}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-md bg-teal-800 hover:bg-teal-900 text-white text-xs font-semibold shrink-0 transition-colors"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold shrink-0 transition-colors shadow-sm"
           >
-            <span>Open Session</span>
+            <span>Open Session Console</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
       )}
 
-      <div className="bg-surface rounded-xl border border-warm-300 p-6 sm:p-7 shadow-card">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-sm transition-colors">
         <form onSubmit={handleStart} className="space-y-5">
           {/* Course Selector */}
           <div>
-            <label className="text-xs font-semibold text-navy-700 block mb-1.5">
-              Select Course & Cohort
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+              Target Course & Cohort Roster <span className="text-rose-500">*</span>
             </label>
             <select
               value={selectedCourseId}
               onChange={e => setSelectedCourseId(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-md border border-warm-300 text-xs bg-surface text-navy-900 focus:outline-none focus:border-primary font-medium"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 font-medium"
               required
             >
               {myCourses.map(c => (
@@ -163,35 +165,35 @@ export const TakeAttendance: React.FC = () => {
 
           {/* Lecture Topic */}
           <div>
-            <label className="text-xs font-semibold text-navy-700 block mb-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
               Lecture Topic or Unit Description (Optional)
             </label>
             <input
               type="text"
-              placeholder="e.g. Distributed Consensus & Raft Architecture"
+              placeholder="e.g. Unit 3: Distributed Consensus & Raft Architecture"
               value={lectureTopic}
               onChange={e => setLectureTopic(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs text-navy-900 placeholder-navy-400 focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-600"
             />
           </div>
 
           {/* QR Refresh Configuration */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-navy-700">
-                Anti-Proxy QR Refresh Interval
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Anti-Proxy Cryptographic Rotation Cycle
               </label>
-              <span className="text-[10px] font-mono text-navy-500">
-                Cryptographic rotation cycle
+              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                Prevents photo sharing
               </span>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label 
-                className={`p-3.5 rounded-lg border flex items-center justify-between cursor-pointer transition-all ${
+                className={`p-3.5 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
                   refreshInterval === 3 
-                    ? 'border-primary bg-primary-light/50 text-navy-900 font-semibold ring-1 ring-primary' 
-                    : 'border-warm-300 bg-surface text-navy-700 hover:bg-warm-50'
+                    ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-slate-900 dark:text-white font-semibold' 
+                    : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
@@ -200,21 +202,21 @@ export const TakeAttendance: React.FC = () => {
                     name="interval"
                     checked={refreshInterval === 3}
                     onChange={() => setRefreshInterval(3)}
-                    className="accent-primary"
+                    className="accent-blue-600"
                   />
                   <div>
                     <span className="text-xs block font-bold">3 Seconds</span>
-                    <span className="text-[10px] text-navy-500 block">Recommended security</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">Strict anti-proxy rotation</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warm-200 text-navy-700">Strict</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600">Recommended</span>
               </label>
 
               <label 
-                className={`p-3.5 rounded-lg border flex items-center justify-between cursor-pointer transition-all ${
+                className={`p-3.5 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${
                   refreshInterval === 5 
-                    ? 'border-primary bg-primary-light/50 text-navy-900 font-semibold ring-1 ring-primary' 
-                    : 'border-warm-300 bg-surface text-navy-700 hover:bg-warm-50'
+                    ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/40 text-slate-900 dark:text-white font-semibold' 
+                    : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
@@ -223,26 +225,26 @@ export const TakeAttendance: React.FC = () => {
                     name="interval"
                     checked={refreshInterval === 5}
                     onChange={() => setRefreshInterval(5)}
-                    className="accent-primary"
+                    className="accent-blue-600"
                   />
                   <div>
                     <span className="text-xs block font-bold">5 Seconds</span>
-                    <span className="text-[10px] text-navy-500 block">Large auditoriums</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">Auditoriums / large cohorts</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warm-200 text-navy-700">Relaxed</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600">Relaxed</span>
               </label>
             </div>
           </div>
 
           {/* Geofencing Configuration Section */}
-          <div className="p-4 rounded-xl bg-warm-100/70 border border-warm-300 space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-primary" />
+                <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <div>
-                  <span className="text-xs font-bold text-navy-900 block">GPS Classroom Geofencing</span>
-                  <span className="text-[11px] text-navy-500 block">Enforce physical classroom presence</span>
+                  <span className="text-xs font-bold text-slate-900 dark:text-white block">Classroom GPS Geofencing</span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block">Enforce physical lecture hall attendance</span>
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -257,25 +259,25 @@ export const TakeAttendance: React.FC = () => {
                   }} 
                   className="sr-only peer" 
                 />
-                <div className="w-10 h-5 bg-warm-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-warm-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                <div className="w-10 h-5 bg-slate-300 dark:bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
 
             {enableGeofence ? (
-              <div className="space-y-3 pt-3 border-t border-warm-200">
-                <p className="text-[11px] text-navy-600 leading-relaxed">
+              <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
                   Students will be required to be physically within the defined perimeter of your current GPS location when scanning the QR code.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-semibold text-navy-700 block mb-1">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                       Perimeter Radius
                     </label>
                     <select
                       value={geoRadius}
                       onChange={e => setGeoRadius(Number(e.target.value))}
-                      className="w-full px-2.5 py-1.5 rounded-md border border-warm-300 text-xs bg-surface font-mono"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
                     >
                       <option value={30}>30 meters (Strict Classroom)</option>
                       <option value={50}>50 meters (Standard Hall)</option>
@@ -285,63 +287,63 @@ export const TakeAttendance: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-navy-700 block mb-1">
-                      Location Label
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Classroom / Hall Label
                     </label>
                     <input
                       type="text"
                       placeholder="e.g. Hall 302 / CS Block"
                       value={locationName}
                       onChange={e => setLocationName(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-md border border-warm-300 text-xs bg-surface"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                     />
                   </div>
                 </div>
 
                 {/* GPS Coordinates Status */}
-                <div className="flex items-center justify-between p-3 rounded-lg bg-surface border border-warm-300 text-xs shadow-subtle">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs shadow-sm">
                   <div>
                     {currentCoords ? (
-                      <div className="font-mono text-[11px] text-emerald-800">
+                      <div className="font-mono text-[11px] text-emerald-800 dark:text-emerald-400">
                         <span className="font-bold">✓ Coordinates Locked:</span> {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
                       </div>
                     ) : (
-                      <span className="text-navy-500 text-[11px] italic">Coordinates not yet acquired</span>
+                      <span className="text-slate-500 dark:text-slate-400 text-[11px] italic">Coordinates not yet acquired</span>
                     )}
                   </div>
                   <button
                     type="button"
                     onClick={detectLocation}
                     disabled={detectingLocation}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-warm-200 hover:bg-warm-300 text-navy-800 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-[11px] font-semibold transition-colors disabled:opacity-50"
                   >
-                    <Navigation className="h-3 w-3 text-primary" />
+                    <Navigation className="h-3 w-3 text-blue-600 dark:text-blue-400" />
                     <span>{detectingLocation ? 'Locating...' : 'Refresh GPS'}</span>
                   </button>
                 </div>
 
                 {geoError && (
-                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-md text-rose-800 text-[11px] flex items-center gap-1.5">
+                  <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-lg text-rose-800 dark:text-rose-300 text-[11px] flex items-center gap-1.5">
                     <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
                     <span>{geoError}</span>
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-[11px] text-navy-500">
-                Disabled. Attendance can be verified from any location within the QR token rotation window.
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Disabled. Attendance is cryptographically validated without GPS perimeter restriction.
               </p>
             )}
           </div>
 
-          {/* Projection Notice */}
-          <div className="p-4 rounded-xl bg-warm-100 border border-warm-200 text-xs text-navy-700 space-y-1">
-            <div className="flex items-center gap-1.5 font-bold text-navy-900">
-              <Sparkles className="h-4 w-4 text-primary" />
+          {/* Projector Notice */}
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
+              <Monitor className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <span>Projector-Ready Mode</span>
             </div>
-            <p className="text-[11px] text-navy-600 leading-relaxed">
-              Starting this session opens the distance-first projector view with live attendee feed, fullscreen support, and privacy masking for student names.
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              Starting this session opens the distance-first projector view with live attendee ticker, fullscreen mode, and privacy masking for student names.
             </p>
           </div>
 
@@ -349,10 +351,10 @@ export const TakeAttendance: React.FC = () => {
             <button
               type="submit"
               disabled={!selectedCourseId || (enableGeofence && !currentCoords)}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-md bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-subtle transition-all active:scale-95 disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
             >
               <Play className="h-4 w-4 fill-current" />
-              <span>Start Session & Open Live Screen</span>
+              <span>Start Session & Open Live Console</span>
             </button>
           </div>
         </form>

@@ -83,17 +83,19 @@ export const TimetableSchedule: React.FC = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {/* Editorial Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-warm-300 pb-4">
+    <div className="max-w-7xl mx-auto space-y-5 animate-fade-in">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
         <div>
-          <span className="text-[11px] font-mono uppercase tracking-wider text-primary font-semibold">
-            ACADEMIC SCHEDULE
-          </span>
-          <h1 className="text-2xl font-bold tracking-tight text-navy-900 mt-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+              ACADEMIC SCHEDULE
+            </span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
             Weekly Timetable & Schedule
           </h1>
-          <p className="text-xs text-navy-600 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {isTeacher 
               ? 'Organize faculty lecture periods, classroom locations, and department timings.' 
               : 'View your weekly classes and room allocations across your enrolled courses.'}
@@ -106,7 +108,7 @@ export const TimetableSchedule: React.FC = () => {
               setDayOfWeek(selectedDay);
               setIsModalOpen(true);
             }}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all hover:-translate-y-0.5"
           >
             <Plus className="h-4 w-4" />
             <span>Add Class Period</span>
@@ -115,7 +117,7 @@ export const TimetableSchedule: React.FC = () => {
       </div>
 
       {/* Day Selector Tabs with counts */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-warm-300 no-scrollbar">
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 dark:border-slate-800 no-scrollbar">
         {days.map(d => {
           const count = getDayCount(d);
           const isToday = (todayIndex >= 1 && todayIndex <= 6 && days[todayIndex - 1] === d);
@@ -124,19 +126,19 @@ export const TimetableSchedule: React.FC = () => {
             <button
               key={d}
               onClick={() => setSelectedDay(d)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 shrink-0 ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2 shrink-0 ${
                 selectedDay === d
-                  ? 'bg-navy-900 text-white shadow-subtle'
-                  : 'bg-surface text-navy-700 hover:bg-warm-200 border border-warm-300'
+                  ? 'bg-slate-900 dark:bg-slate-800 text-white shadow-sm'
+                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
               }`}
             >
               <span>{d}</span>
               {isToday && (
-                <span className={`w-1.5 h-1.5 rounded-full ${selectedDay === d ? 'bg-teal-400' : 'bg-primary'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${selectedDay === d ? 'bg-blue-400' : 'bg-blue-600'}`} />
               )}
               {count > 0 && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                  selectedDay === d ? 'bg-navy-800 text-teal-300' : 'bg-warm-200 text-navy-700'
+                <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                  selectedDay === d ? 'bg-slate-800 dark:bg-slate-700 text-blue-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                 }`}>
                   {count}
                 </span>
@@ -149,10 +151,10 @@ export const TimetableSchedule: React.FC = () => {
       {/* Schedule Arena */}
       <div className="space-y-4">
         {visibleSlots.length === 0 ? (
-          <div className="p-12 text-center bg-surface border border-warm-300 rounded-xl space-y-2">
-            <Calendar className="h-10 w-10 text-navy-400 mx-auto opacity-50 mb-1" />
-            <h3 className="text-sm font-bold text-navy-900">No Classes Scheduled for {selectedDay}</h3>
-            <p className="text-xs text-navy-500 max-w-sm mx-auto">
+          <div className="p-12 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+            <Calendar className="h-10 w-10 text-slate-400 mx-auto opacity-50 mb-1" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">No Classes Scheduled for {selectedDay}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
               {isTeacher 
                 ? 'Assign course periods to this day to organize your weekly teaching schedule.' 
                 : 'You have no lectures scheduled on this day across your enrolled courses.'}
@@ -163,7 +165,7 @@ export const TimetableSchedule: React.FC = () => {
                   setDayOfWeek(selectedDay);
                   setIsModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-xs font-semibold rounded-md shadow-subtle mt-2"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg shadow-sm mt-2"
               >
                 <Plus className="h-4 w-4" />
                 <span>Add Class to {selectedDay}</span>
@@ -175,41 +177,41 @@ export const TimetableSchedule: React.FC = () => {
             {visibleSlots.map(slot => (
               <div 
                 key={slot.id} 
-                className="p-5 rounded-xl bg-surface border border-warm-300 shadow-subtle hover:border-warm-400 transition-all flex flex-col justify-between space-y-4"
+                className="erp-box p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4"
               >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-warm-200 text-navy-900 border border-warm-300">
+                    <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700">
                       {slot.courseCode}
                     </span>
-                    <div className="flex items-center gap-1 text-xs font-mono font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                      <Clock className="h-3.5 w-3.5 text-primary" />
+                    <div className="flex items-center gap-1 text-xs font-mono font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                      <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                       <span>{slot.startTime} - {slot.endTime}</span>
                     </div>
                   </div>
 
-                  <h3 className="text-sm font-bold text-navy-900 leading-snug">{slot.courseName}</h3>
-                  <div className="space-y-1.5 text-xs text-navy-600 pt-1">
-                    <p className="flex items-center gap-1.5 font-mono text-navy-800 font-medium">
-                      <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">{slot.courseName}</h3>
+                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300 pt-1">
+                    <p className="flex items-center gap-1.5 font-mono text-slate-800 dark:text-slate-200 font-medium">
+                      <MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                       <span>Room: {slot.room}</span>
                     </p>
-                    <p className="flex items-center gap-1.5 text-navy-600">
-                      <User className="h-3.5 w-3.5 text-navy-400 shrink-0" />
+                    <p className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                      <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                       <span>{slot.teacherName} ({slot.department})</span>
                     </p>
                   </div>
                 </div>
 
                 {isTeacher && (
-                  <div className="pt-2 border-t border-warm-200 flex justify-end">
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                     <button
                       onClick={() => {
                         if (window.confirm(`Delete the ${slot.courseCode} class slot on ${slot.dayOfWeek}?`)) {
                           deleteTimetableSlot(slot.id);
                         }
                       }}
-                      className="p-1.5 text-navy-400 hover:text-rose-700 hover:bg-rose-50 rounded transition-colors text-xs flex items-center gap-1 font-medium"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded transition-colors text-xs flex items-center gap-1 font-medium"
                       title="Remove class period"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -226,21 +228,21 @@ export const TimetableSchedule: React.FC = () => {
       {/* Add Slot Modal */}
       {isModalOpen && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150"
           onClick={() => setIsModalOpen(false)}
         >
           <div 
-            className="bg-surface rounded-xl border border-warm-300 shadow-elevated w-full max-w-md p-6 space-y-4"
+            className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md p-6 space-y-4"
             onClick={e => e.stopPropagation()}
           >
-            <div className="border-b border-warm-200 pb-3 flex items-center justify-between">
+            <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-navy-900">Add Class Period to Timetable</h3>
-                <p className="text-xs text-navy-500">Configure lecture timing and room assignment.</p>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Add Class Period to Timetable</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Configure lecture timing and room assignment.</p>
               </div>
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 text-navy-400 hover:text-navy-700 rounded"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -248,11 +250,11 @@ export const TimetableSchedule: React.FC = () => {
 
             <form onSubmit={handleCreateSlot} className="space-y-3.5">
               <div>
-                <label className="text-xs font-semibold text-navy-700 block mb-1">Select Course</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Select Course</label>
                 <select
                   value={courseId}
                   onChange={e => setCourseId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs bg-surface text-navy-900 font-medium"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
                   required
                 >
                   {myCourses.map(c => (
@@ -264,11 +266,11 @@ export const TimetableSchedule: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-navy-700 block mb-1">Day of Week</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Day of Week</label>
                 <select
                   value={dayOfWeek}
                   onChange={e => setDayOfWeek(e.target.value as DayOfWeek)}
-                  className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs bg-surface text-navy-900"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 >
                   {days.map(d => (
                     <option key={d} value={d}>{d}</option>
@@ -278,51 +280,51 @@ export const TimetableSchedule: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-navy-700 block mb-1">Start Time</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Start Time</label>
                   <input
                     type="time"
                     required
                     value={startTime}
                     onChange={e => setStartTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs font-mono"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-navy-700 block mb-1">End Time</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">End Time</label>
                   <input
                     type="time"
                     required
                     value={endTime}
                     onChange={e => setEndTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs font-mono"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-navy-700 block mb-1">Classroom / Room Number</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Classroom / Room Number</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Hall 302 or Lab 2"
                   value={room}
                   onChange={e => setRoom(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs text-navy-900"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-warm-200">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-md text-xs font-medium text-navy-700 hover:bg-warm-100"
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary-hover text-white shadow-subtle disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:opacity-50 transition-colors"
                 >
                   {submitting ? 'Adding...' : 'Add to Schedule'}
                 </button>

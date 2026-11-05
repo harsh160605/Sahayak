@@ -93,8 +93,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'review-requests',
-        title: 'Enrollment Requests',
-        subtitle: pendingCount > 0 ? `${pendingCount} student requests awaiting approval` : 'No pending requests',
+        title: 'Enrollment Requests Queue',
+        subtitle: pendingCount > 0 ? `${pendingCount} student requests awaiting decision` : 'No pending requests',
         icon: UserCheck,
         category: 'Actions',
         badge: pendingCount > 0 ? `${pendingCount}` : undefined,
@@ -106,7 +106,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       {
         id: 'nav-dashboard',
         title: 'Faculty Dashboard',
-        subtitle: 'Overview of courses and attendance stats',
+        subtitle: 'Overview of courses and attendance statistics',
         icon: LayoutDashboard,
         category: 'Navigation',
         action: () => {
@@ -116,8 +116,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-courses',
-        title: 'My Courses & Rosters',
-        subtitle: 'Manage curriculum and course details',
+        title: 'Course Offerings',
+        subtitle: 'Manage curriculum and course offerings',
         icon: BookOpen,
         category: 'Navigation',
         action: () => {
@@ -127,8 +127,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-timetable',
-        title: 'Class Timetable',
-        subtitle: 'Weekly lecture schedule and rooms',
+        title: 'Academic Timetable',
+        subtitle: 'Weekly lecture schedule and classrooms',
         icon: Calendar,
         category: 'Navigation',
         action: () => {
@@ -138,8 +138,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-students',
-        title: 'Manage Students',
-        subtitle: 'View student rosters and manual enrollment',
+        title: 'Manage Student Directory',
+        subtitle: 'Inspect cohort rosters and manual enrollment',
         icon: Users,
         category: 'Navigation',
         action: () => {
@@ -149,7 +149,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-history',
-        title: 'Attendance History',
+        title: 'Attendance Audit Log',
         subtitle: 'Historical session logs and CSV export',
         icon: History,
         category: 'Navigation',
@@ -160,8 +160,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-reports',
-        title: 'Reports & Defaulter Tracking',
-        subtitle: 'Cohort analytics and compliance metrics',
+        title: 'Defaulter Reports & Analytics',
+        subtitle: 'Cohort analytics and threshold compliance',
         icon: BarChart3,
         category: 'Navigation',
         action: () => {
@@ -212,8 +212,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-student-timetable',
-        title: 'Class Timetable',
-        subtitle: 'Today and weekly lecture schedule',
+        title: 'Academic Timetable',
+        subtitle: 'Weekly lecture schedule and hall allocation',
         icon: Calendar,
         category: 'Navigation',
         action: () => {
@@ -223,8 +223,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-join-course',
-        title: 'Join an Academic Course',
-        subtitle: 'Browse catalog and request enrollment',
+        title: 'Course Catalog & Registration',
+        subtitle: 'Browse department offerings and request admission',
         icon: GraduationCap,
         category: 'Navigation',
         action: () => {
@@ -234,7 +234,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
       {
         id: 'nav-student-history',
-        title: 'Attendance History',
+        title: 'Personal Attendance Log',
         subtitle: 'Personal attendance records and timestamps',
         icon: History,
         category: 'Navigation',
@@ -250,7 +250,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
   items.push(
     {
       id: 'nav-profile',
-      title: 'Profile & Settings',
+      title: 'Profile & Credentials',
       subtitle: `${currentUser.fullName} (${currentUser.role})`,
       icon: User,
       category: 'Navigation',
@@ -261,7 +261,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
     },
     {
       id: 'switch-role',
-      title: `Switch to ${isTeacher ? 'Student View' : 'Teacher View'}`,
+      title: `Switch to ${isTeacher ? 'Student View' : 'Faculty View'}`,
       subtitle: 'Demo role switcher for evaluation',
       icon: ArrowRightLeft,
       category: 'Actions',
@@ -298,14 +298,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-navy-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
       <div 
-        className="w-full max-w-xl bg-surface rounded-xl border border-warm-300 shadow-elevated overflow-hidden flex flex-col"
+        className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         {/* Search header */}
-        <div className="flex items-center px-4 border-b border-warm-200">
-          <Search className="h-4 w-4 text-navy-400 shrink-0" />
+        <div className="flex items-center px-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
+          <Search className="h-4 w-4 text-slate-400 shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -316,20 +316,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
               setSelectedIndex(0);
             }}
             onKeyDown={handleKeyDown}
-            className="w-full px-3 py-3.5 text-xs text-navy-900 placeholder-navy-400 bg-transparent focus:outline-none"
+            className="w-full px-3 py-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 bg-transparent focus:outline-none"
           />
           <button 
             onClick={onClose}
-            className="p-1 rounded text-navy-400 hover:text-navy-700 hover:bg-warm-100 transition-colors"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Results List */}
-        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-warm-100">
+        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-slate-100 dark:divide-slate-800">
           {filteredItems.length === 0 ? (
-            <div className="p-8 text-center text-xs text-navy-500">
+            <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">
               No matching pages or commands found for "{query}".
             </div>
           ) : (
@@ -341,22 +341,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                   key={item.id}
                   onClick={item.action}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                    isSelected ? 'bg-navy-900 text-white' : 'hover:bg-warm-100 text-navy-800'
+                  className={`flex items-center justify-between px-3 py-2.5 rounded text-xs cursor-pointer transition-colors ${
+                    isSelected ? 'bg-blue-600 text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`p-1.5 rounded-md ${
-                      isSelected ? 'bg-navy-800 text-teal-300' : 'bg-warm-200 text-navy-700'
+                    <div className={`p-1.5 rounded ${
+                      isSelected ? 'bg-blue-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                     }`}>
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="truncate">
-                      <p className={`font-semibold truncate ${isSelected ? 'text-white' : 'text-navy-900'}`}>
+                      <p className={`font-semibold truncate ${isSelected ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
                         {item.title}
                       </p>
                       {item.subtitle && (
-                        <p className={`text-[11px] truncate ${isSelected ? 'text-navy-300' : 'text-navy-500'}`}>
+                        <p className={`text-[11px] truncate ${isSelected ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'}`}>
                           {item.subtitle}
                         </p>
                       )}
@@ -366,8 +366,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                   {item.badge && (
                     <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase shrink-0 ${
                       isSelected 
-                        ? 'bg-teal-500 text-navy-950' 
-                        : 'bg-warm-200 text-navy-800 border border-warm-300'
+                        ? 'bg-blue-800 text-white' 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                     }`}>
                       {item.badge}
                     </span>
@@ -379,13 +379,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
         </div>
 
         {/* Footer shortcuts */}
-        <div className="px-4 py-2 bg-warm-100 border-t border-warm-200 flex items-center justify-between text-[11px] font-mono text-navy-500">
+        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-3">
             <span>&uarr;&darr; Navigate</span>
             <span>&crarr; Select</span>
             <span>ESC Close</span>
           </div>
-          <span>SmartAttend Navigator</span>
+          <span>SmartAttend ERP</span>
         </div>
       </div>
     </div>

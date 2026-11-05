@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { TeacherDashboard } from './pages/TeacherDashboard';
@@ -43,14 +44,15 @@ const RootRedirect: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <DataProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+    <ThemeProvider>
+      <AuthProvider>
+        <DataProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            {/* Main Application Shell */}
-            <Route element={<Layout />}>
+              {/* Main Application Shell */}
+              <Route element={<Layout />}>
               {/* Default Dynamic Redirect based on role */}
               <Route path="/" element={<RootRedirect />} />
 
@@ -144,7 +146,8 @@ export const App: React.FC = () => {
         </BrowserRouter>
       </DataProvider>
     </AuthProvider>
-  );
+  </ThemeProvider>
+);
 };
 
 export default App;

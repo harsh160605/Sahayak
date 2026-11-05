@@ -7,12 +7,11 @@ import {
   AlertCircle, 
   RefreshCw, 
   ShieldCheck, 
-  Sparkles,
-  MapPin,
-  Navigation,
-  ArrowRight,
-  Radio,
-  Check
+  MapPin, 
+  Navigation, 
+  ArrowRight, 
+  Radio, 
+  Check 
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -42,7 +41,7 @@ export const StudentQRScanner: React.FC = () => {
   const [simulatedTokenInput, setSimulatedTokenInput] = useState<string>('');
   const scannerRef = useRef<any>(null);
 
-  // Find active lecture for student to enable quick 1-click simulator
+  // Find active lecture for student
   const myEnrolledCourseIds = enrollments
     .filter(e => e.studentUid === currentUser?.uid && e.status === 'active')
     .map(e => e.courseId);
@@ -104,14 +103,14 @@ export const StudentQRScanner: React.FC = () => {
           handleScanSuccess(decodedText);
         },
         (_errorMessage) => {
-          // ignore transient frame decode misses
+          // ignore transient frame misses
         }
       );
       setScanning(true);
     } catch (err: any) {
       console.warn('Camera initiation notice:', err);
       setCameraError(
-        'Unable to initialize camera device. Grant camera permissions in browser, or use the direct verification simulator below.'
+        'Unable to access camera. Please allow camera permissions, or use the direct evaluation token entry below.'
       );
       setScanning(false);
     }
@@ -151,10 +150,10 @@ export const StudentQRScanner: React.FC = () => {
 
     if (result.success) {
       confetti({
-        particleCount: 50,
-        spread: 60,
+        particleCount: 40,
+        spread: 50,
         origin: { y: 0.8 },
-        colors: ['#0D9488', '#0F766E', '#14B8A6']
+        colors: ['#2563EB', '#1D4ED8', '#10B981']
       });
       stopScanner();
     }
@@ -168,36 +167,38 @@ export const StudentQRScanner: React.FC = () => {
   }, []);
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Editorial Header */}
-      <div className="border-b border-warm-300 pb-4">
-        <span className="text-[11px] font-mono uppercase tracking-wider text-primary font-semibold">
-          STUDENT VERIFICATION
-        </span>
-        <h1 className="text-2xl font-bold tracking-tight text-navy-900 mt-0.5">
+    <div className="max-w-2xl mx-auto space-y-5 animate-fade-in">
+      {/* Top Header */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+            PRESENCE VERIFICATION
+          </span>
+        </div>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
           Mark Attendance via QR
         </h1>
-        <p className="text-xs text-navy-600 mt-1">
-          Scan the dynamic rotating QR code projected in your classroom.
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          Scan the rotating cryptographic QR code displayed on your lecture hall projector screen.
         </p>
       </div>
 
       {/* Active Lecture Context Banner */}
       {activeLecture && (
-        <div className="p-4 rounded-xl bg-teal-50 border border-teal-300 shadow-subtle flex items-center justify-between gap-3">
+        <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 shadow-sm flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Radio className="h-4 w-4 text-teal-700 animate-pulse shrink-0" />
+            <Radio className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-pulse shrink-0" />
             <div>
-              <p className="text-xs font-bold text-teal-950 font-mono">
+              <p className="text-xs font-bold text-blue-950 dark:text-blue-200 font-mono">
                 {activeLecture.courseCode} — {activeLecture.courseName}
               </p>
-              <p className="text-[11px] text-teal-800">
+              <p className="text-[11px] text-blue-800 dark:text-blue-300">
                 Topic: {activeLecture.lectureTopic} &bull; Started {formatTime(activeLecture.startedAt)}
               </p>
             </div>
           </div>
           {activeLecture.geofence?.enabled && (
-            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-200 text-teal-900 shrink-0">
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-200 shrink-0">
               GPS {activeLecture.geofence.radiusMeters}m
             </span>
           )}
@@ -207,30 +208,30 @@ export const StudentQRScanner: React.FC = () => {
       {/* Verification Feedback Result */}
       {scanResult && (
         <div 
-          className={`p-5 rounded-xl border shadow-subtle ${
+          className={`p-5 rounded-xl border shadow-sm ${
             scanResult.success 
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-950' 
-              : 'bg-rose-50 border-rose-300 text-rose-950'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200' 
+              : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-900/60 text-rose-950 dark:text-rose-200'
           }`}
         >
           <div className="flex items-start gap-3">
             {scanResult.success ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             ) : (
-              <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+              <AlertCircle className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
             )}
             <div className="space-y-1.5 flex-1">
               <h3 className="text-sm font-bold">
-                {scanResult.success ? 'Attendance Successfully Recorded!' : 'Verification Failed'}
+                {scanResult.success ? 'Attendance Verified & Recorded' : 'Verification Failed'}
               </h3>
               <p className="text-xs leading-relaxed">{scanResult.message}</p>
               {scanResult.courseName && (
-                <div className="pt-2 text-xs font-mono space-y-1 bg-white/60 p-3 rounded-lg border border-emerald-200">
+                <div className="pt-2 text-xs font-mono space-y-1 bg-white/70 dark:bg-slate-900/80 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800">
                   <p><strong>Course:</strong> {scanResult.courseName}</p>
                   <p><strong>Topic:</strong> {scanResult.sessionTopic}</p>
                   <p><strong>Timestamp:</strong> {formatTime(scanResult.markedAt || '')}</p>
                   {scanResult.distanceMeters !== undefined && (
-                    <p className="text-teal-800 font-bold">
+                    <p className="text-blue-800 dark:text-blue-300 font-bold">
                       <strong>GPS Distance:</strong> ~{scanResult.distanceMeters}m from classroom center
                     </p>
                   )}
@@ -241,9 +242,9 @@ export const StudentQRScanner: React.FC = () => {
                 <div className="pt-2">
                   <Link
                     to="/student/history"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-800 hover:underline"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline"
                   >
-                    <span>View in attendance history</span>
+                    <span>View in attendance log</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 </div>
@@ -253,27 +254,27 @@ export const StudentQRScanner: React.FC = () => {
         </div>
       )}
 
-      {/* Geofencing Location Status Badge */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-lg bg-surface border border-warm-300 text-xs shadow-subtle gap-2">
+      {/* Geofencing Location Status */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-sm gap-2 transition-colors">
         <div className="flex items-center gap-2">
-          <MapPin className={`h-4 w-4 shrink-0 ${studentCoords ? 'text-primary' : 'text-navy-400'}`} />
+          <MapPin className={`h-4 w-4 shrink-0 ${studentCoords ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
           <div>
-            <span className="font-semibold text-navy-900">GPS Classroom Perimeter Status: </span>
+            <span className="font-semibold text-slate-900 dark:text-white">GPS Classroom Perimeter Status: </span>
             {studentCoords ? (
-              <span className="text-emerald-700 font-mono font-medium">
+              <span className="text-emerald-700 dark:text-emerald-400 font-mono font-medium">
                 Locked ({studentCoords.latitude.toFixed(4)}, {studentCoords.longitude.toFixed(4)})
               </span>
             ) : locating ? (
-              <span className="text-amber-700 italic">Acquiring GPS fix...</span>
+              <span className="text-amber-700 dark:text-amber-400 italic">Acquiring GPS fix...</span>
             ) : (
-              <span className="text-navy-500 italic">Location unverified</span>
+              <span className="text-slate-500 dark:text-slate-400 italic">Location unverified</span>
             )}
           </div>
         </div>
         <button
           type="button"
           onClick={acquireGPSLocation}
-          className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 font-mono self-start sm:self-auto"
+          className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-mono self-start sm:self-auto cursor-pointer"
         >
           <Navigation className="h-3 w-3" />
           <span>{locating ? 'Locating...' : 'Refresh GPS'}</span>
@@ -281,31 +282,31 @@ export const StudentQRScanner: React.FC = () => {
       </div>
 
       {locatingError && (
-        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+        <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
           <span>{locatingError}</span>
         </div>
       )}
 
       {/* Camera Viewfinder Arena */}
-      <div className="bg-surface rounded-xl border border-warm-300 p-6 shadow-subtle space-y-6">
-        <div className="relative rounded-xl overflow-hidden bg-[#0A0F1D] min-h-[300px] flex flex-col items-center justify-center">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6 transition-colors">
+        <div className="relative rounded-xl overflow-hidden bg-slate-950 min-h-[300px] flex flex-col items-center justify-center">
           <div id="qr-reader-container" className="w-full h-full" />
 
           {!scanning && !scanResult?.success && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-warm-300 bg-[#0A0F1D]/90 space-y-3">
-              <div className="h-12 w-12 rounded-full bg-navy-900 border border-navy-700 flex items-center justify-center text-teal-400 shadow-subtle">
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-slate-300 bg-slate-950/90 space-y-3">
+              <div className="h-12 w-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-blue-400 shadow-sm">
                 <Camera className="h-6 w-6" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-white">Camera Access Required</p>
-                <p className="text-xs text-navy-400 max-w-xs mt-1">
-                  Point your mobile or web camera at the projector screen.
+                <p className="text-sm font-semibold text-white">Camera Access Ready</p>
+                <p className="text-xs text-slate-400 max-w-xs mt-1">
+                  Position your camera at the projected classroom QR token.
                 </p>
               </div>
               <button
                 onClick={startScanner}
-                className="px-5 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95"
+                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
               >
                 Start Camera Scanner
               </button>
@@ -316,7 +317,7 @@ export const StudentQRScanner: React.FC = () => {
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
               <button
                 onClick={stopScanner}
-                className="px-4 py-1.5 rounded-full bg-navy-900/90 backdrop-blur border border-navy-700 text-white text-xs font-mono flex items-center gap-1.5 hover:bg-navy-800 transition-colors shadow-elevated"
+                className="px-4 py-1.5 rounded-lg bg-slate-900/90 backdrop-blur border border-slate-700 text-white text-xs font-mono flex items-center gap-1.5 hover:bg-slate-800 transition-colors shadow-md cursor-pointer"
               >
                 <CameraOff className="h-3.5 w-3.5 text-rose-400" />
                 <span>Stop Scanner</span>
@@ -326,30 +327,30 @@ export const StudentQRScanner: React.FC = () => {
         </div>
 
         {cameraError && (
-          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
             <span>{cameraError}</span>
           </div>
         )}
 
         {/* Diagnostic Token Entry for Testing / Simulator */}
-        <div className="pt-4 border-t border-warm-200 space-y-2">
+        <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono text-navy-500 uppercase tracking-wider font-semibold">
-              Evaluation & Desktop Scanner Simulator
+            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
+              Evaluation & Desktop Simulator
             </span>
             {activeLecture?.currentQrToken && (
               <button
                 type="button"
                 onClick={() => setSimulatedTokenInput(activeLecture.currentQrToken || '')}
-                className="text-[11px] font-mono text-primary font-semibold hover:underline flex items-center gap-1"
+                className="text-[11px] font-mono text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
               >
                 <span>Paste Active Lecture Token</span>
               </button>
             )}
           </div>
-          <p className="text-xs text-navy-600">
-            For testing on a desktop machine without pointing a phone camera at a second display, enter or simulate the live lecture token:
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            For desktop testing without camera hardware, enter or paste the dynamic token generated by the faculty screen:
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <input
@@ -357,14 +358,14 @@ export const StudentQRScanner: React.FC = () => {
               placeholder="e.g. SA_TOKEN::sess_... (or paste token)"
               value={simulatedTokenInput}
               onChange={e => setSimulatedTokenInput(e.target.value)}
-              className="flex-1 px-3 py-2 text-xs rounded-md border border-warm-300 font-mono text-navy-900 focus:outline-none focus:border-primary"
+              className="flex-1 px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-600"
             />
             <button
               onClick={() => handleScanSuccess(simulatedTokenInput)}
               disabled={!simulatedTokenInput.trim()}
-              className="px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold rounded-md transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
             >
-              Verify Token
+              Verify Presence
             </button>
           </div>
         </div>
