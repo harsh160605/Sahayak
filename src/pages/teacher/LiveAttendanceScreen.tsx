@@ -10,16 +10,20 @@ import {
   Users, 
   Clock, 
   ShieldCheck, 
-  RefreshCw,
-  Search,
-  Eye,
-  EyeOff,
-  CheckCircle,
+  RefreshCw, 
+  Search, 
+  Eye, 
+  EyeOff, 
+  CheckCircle, 
   AlertTriangle,
-  MapPin
+  MapPin,
+  Loader2
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { formatTime } from '../../lib/utils';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, isLiveFirebaseConfigured } from '../../config/firebase';
+import { AttendanceSession } from '../../types';
 
 export const LiveAttendanceScreen: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -37,7 +41,40 @@ export const LiveAttendanceScreen: React.FC = () => {
     endSession 
   } = useData();
 
-  const session = sessions.find(s => s.id === sessionId);
+  // Try finding session in live sessions array or direct fetch state
+  const foundSession = sessions.find(s => s.id === sessionId);
+  const [session, setSession] = useState<AttendanceSession | null>(foundSession || null);
+  const [loadingSession, setLoadingSession] = useState<boolean>(!foundSession);
+
+  // Sync when sessions array updates
+  useEffect(() => {
+    if (foundSession) {
+      setSession(foundSession);
+      setLoadingSession(false);
+    }
+  }, [foundSession]);
+
+  // Fallback: If snapshot hasn't arrived yet on initial mount, directly fetch document from Firestore
+  useEffect(() => {
+    if (!session && sessionId && isLiveFirebaseConfigured) {
+      setLoadingSession(true);
+      getDoc(doc(db, 'attendanceSessions', sessionId))
+        .then((snap) => {
+          if (snap.exists()) {
+            setSession({ id: snap.id, ...(snap.data() as any) });
+          }
+        })
+        .catch((err) => {
+          console.error('Error fetching attendance session directly:', err);
+        })
+        .finally(() => {
+          setLoadingSession(false);
+        });
+    } else if (!isLiveFirebaseConfigured && !session) {
+      setLoadingSession(false);
+    }
+  }, [sessionId, session]);
+
   const course = courses.find(c => c.id === session?.courseId);
   const enrolledStudents = enrollments.filter(e => e.courseId === session?.courseId && e.status === 'active');
   const sessionRecords = attendanceRecords.filter(r => r.sessionId === sessionId);
@@ -83,7 +120,6 @@ export const LiveAttendanceScreen: React.FC = () => {
   useEffect(() => {
     if (!session || session.status !== 'active') return;
 
-    // Generate initial token immediately
     generateNewToken();
 
     const intervalTimer = setInterval(() => {
@@ -107,16 +143,29 @@ export const LiveAttendanceScreen: React.FC = () => {
     }
   };
 
+  if (loadingSession) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto" />
+          <p className="text-xs font-mono text-navy-600">Connecting to Live Attendance Session...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!session) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
         <div className="p-8 max-w-md text-center space-y-4">
           <AlertTriangle className="h-10 w-10 text-amber-600 mx-auto" />
           <h2 className="text-xl font-bold text-navy-900">Attendance Session Not Found</h2>
-          <p className="text-sm text-navy-600">The requested attendance session is either expired or does not exist.</p>
+          <p className="text-sm text-navy-600">
+            The requested attendance session is either expired, finalized, or the database ID could not be located.
+          </p>
           <button
             onClick={() => navigate('/teacher')}
-            className="px-4 py-2 bg-navy-900 text-white rounded-md text-xs font-semibold"
+            className="px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white rounded-md text-xs font-semibold transition-colors"
           >
             Return to Dashboard
           </button>
@@ -382,4 +431,3 @@ export const LiveAttendanceScreen: React.FC = () => {
     </div>
   );
 };
-

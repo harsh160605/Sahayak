@@ -22,10 +22,12 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
-  onSnapshot 
+  onSnapshot,
+  writeBatch
 } from 'firebase/firestore';
 import { db, isLiveFirebaseConfigured } from '../config/firebase';
 import { calculateDistanceMeters } from '../lib/utils';
+import { useAuth } from './AuthContext';
 
 interface DataContextType {
   courses: Course[];
@@ -70,7 +72,9 @@ interface DataContextType {
   
   // Timetable Actions
   addTimetableSlot: (slot: Omit<TimetableSlot, 'id'>) => Promise<TimetableSlot>;
+  saveWeeklyScheduleBatch: (slots: Omit<TimetableSlot, 'id'>[]) => Promise<void>;
   deleteTimetableSlot: (slotId: string) => Promise<void>;
+  clearDepartmentSchedule: (department: string, semester: string) => Promise<void>;
 
   // Correction & manual overrides
   updateAttendanceStatus: (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => Promise<void>;
@@ -79,6 +83,9 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser } = useAuth();
+  const currentOrgId = currentUser?.organizationId || 'org_apex_tech';
+
   const [courses, setCourses] = useState<Course[]>(() => {
     if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_courses');
@@ -203,7 +210,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: courseId,
       createdAt: new Date().toISOString(),
       status: 'active',
-      enrolledCount: 0
+      enrolledCount: 0,
+      organizationId: data.organizationId || currentUser?.organizationId || 'org_apex_tech',
+      organizationCode: data.organizationCode || currentUser?.organizationCode || 'APEX101'
     };
 
     if (isLiveFirebaseConfigured) {
@@ -250,6 +259,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       courseCode: course.courseCode,
       courseName: course.courseName,
       teacherId: course.teacherId,
+      organizationId: course.organizationId || currentUser?.organizationId || 'org_apex_tech',
+      organizationCode: course.organizationCode || currentUser?.organizationCode || 'APEX101',
       status: 'pending',
       requestedAt: new Date().toISOString()
     };
@@ -400,6 +411,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       qrRefreshIntervalSeconds,
       totalPresent: 0,
       createdAt: new Date().toISOString(),
+      organizationId: course?.organizationId || currentUser?.organizationId || 'org_apex_tech',
+      organizationCode: course?.organizationCode || currentUser?.organizationCode || 'APEX101',
       ...(geofence ? { geofence } : {})
     };
 
@@ -585,7 +598,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Timetable slot management
   const addTimetableSlot = async (slotData: Omit<TimetableSlot, 'id'>) => {
     const slotId = `slot_${Date.now()}`;
-    const newSlot: TimetableSlot = { ...slotData, id: slotId };
+    const newSlot: TimetableSlot = { 
+      ...slotData, 
+      id: slotId,
+      organizationId: slotData.organizationId || currentUser?.organizationId || 'org_apex_tech',
+      organizationCode: slotData.organizationCode || currentUser?.organizationCode || 'APEX101'
+    };
 
     if (isLiveFirebaseConfigured) {
       await setDoc(doc(db, 'timetable', slotId), newSlot);
@@ -595,11 +613,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return newSlot;
   };
 
+  // Bulk save whole week schedule at once
+  const saveWeeklyScheduleBatch = async (slots: Omit<TimetableSlot, 'id'>[]) => {
+    if (isLiveFirebaseConfigured) {
+      const batch = writeBatch(db);
+      const newSlots: TimetableSlot[] = [];
+
+      for (const slot of slots) {
+        const slotId = `slot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const fullSlot: TimetableSlot = { 
+          ...slot, 
+          id: slotId,
+          organizationId: slot.organizationId || currentUser?.organizationId || 'org_apex_tech',
+          organizationCode: slot.organizationCode || currentUser?.organizationCode || 'APEX101'
+        };
+        batch.set(doc(db, 'timetable', slotId), fullSlot);
+        newSlots.push(fullSlot);
+      }
+      await batch.commit();
+    } else {
+      const newSlots: TimetableSlot[] = slots.map((s, idx) => ({
+        ...s,
+        id: `slot_${Date.now()}_${idx}`,
+        organizationId: s.organizationId || currentUser?.organizationId || 'org_apex_tech',
+        organizationCode: s.organizationCode || currentUser?.organizationCode || 'APEX101'
+      }));
+      setTimetable(prev => [...prev, ...newSlots]);
+    }
+  };
+
   const deleteTimetableSlot = async (slotId: string) => {
     if (isLiveFirebaseConfigured) {
       await deleteDoc(doc(db, 'timetable', slotId));
     } else {
       setTimetable(prev => prev.filter(s => s.id !== slotId));
+    }
+  };
+
+  const clearDepartmentSchedule = async (department: string, semester: string) => {
+    const toDelete = timetable.filter(
+      s => s.department === department && 
+           s.semester === semester &&
+           (s.organizationId || 'org_apex_tech') === currentOrgId
+    );
+
+    if (isLiveFirebaseConfigured) {
+      const batch = writeBatch(db);
+      toDelete.forEach(s => {
+        batch.delete(doc(db, 'timetable', s.id));
+      });
+      await batch.commit();
+    } else {
+      setTimetable(prev => prev.filter(
+        s => !(s.department === department && s.semester === semester)
+      ));
     }
   };
 
@@ -612,15 +679,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.info(`[AUDIT] Record ${recordId} changed to ${newStatus}. Reason: ${reason}`);
   };
 
+  // Multi-tenant organization scoping:
+  // Scopes courses, enrollments, requests, sessions, and timetable to the logged-in user's institution.
+  const scopedCourses = courses.filter(c => (c.organizationId || 'org_apex_tech') === currentOrgId);
+  const scopedCourseIds = new Set(scopedCourses.map(c => c.id));
+
+  const scopedEnrollments = enrollments.filter(e => scopedCourseIds.has(e.courseId));
+  const scopedRequests = requests.filter(r => (r.organizationId ? r.organizationId === currentOrgId : scopedCourseIds.has(r.courseId)));
+  const scopedSessions = sessions.filter(s => (s.organizationId ? s.organizationId === currentOrgId : scopedCourseIds.has(s.courseId)));
+  const scopedAttendanceRecords = attendanceRecords.filter(r => scopedCourseIds.has(r.courseId));
+  const scopedTimetable = timetable.filter(t => (t.organizationId || 'org_apex_tech') === currentOrgId);
+
   return (
     <DataContext.Provider
       value={{
-        courses,
-        enrollments,
-        requests,
-        sessions,
-        attendanceRecords,
-        timetable,
+        courses: scopedCourses,
+        enrollments: scopedEnrollments,
+        requests: scopedRequests,
+        sessions: scopedSessions,
+        attendanceRecords: scopedAttendanceRecords,
+        timetable: scopedTimetable,
         addCourse,
         updateCourse,
         requestEnrollment,
@@ -635,7 +713,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         endSession,
         verifyAndRecordAttendance,
         addTimetableSlot,
+        saveWeeklyScheduleBatch,
         deleteTimetableSlot,
+        clearDepartmentSchedule,
         updateAttendanceStatus
       }}
     >

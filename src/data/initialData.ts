@@ -1,8 +1,18 @@
-import { Course, CourseEnrollment, EnrollmentRequest, AttendanceSession, AttendanceRecord, TimetableSlot } from '../types';
+import { Course, CourseEnrollment, EnrollmentRequest, AttendanceSession, AttendanceRecord, TimetableSlot, Organization } from '../types';
+
+export const INITIAL_ORGANIZATION: Organization = {
+  id: 'org_apex_tech',
+  code: 'APEX101',
+  name: 'Apex Institute of Technology',
+  city: 'Mumbai',
+  adminEmail: 'admin@apex.edu',
+  createdAt: '2024-01-01T00:00:00Z'
+};
 
 export const INITIAL_COURSES: Course[] = [
   {
     id: 'course_cs301',
+    organizationId: 'org_apex_tech',
     courseCode: 'CS301',
     courseName: 'Distributed Systems & Cloud Computing',
     department: 'Computer Science & Engineering',
@@ -17,6 +27,7 @@ export const INITIAL_COURSES: Course[] = [
   },
   {
     id: 'course_cs304',
+    organizationId: 'org_apex_tech',
     courseCode: 'CS304',
     courseName: 'Advanced Database Systems',
     department: 'Computer Science & Engineering',
@@ -31,6 +42,7 @@ export const INITIAL_COURSES: Course[] = [
   },
   {
     id: 'course_ai202',
+    organizationId: 'org_apex_tech',
     courseCode: 'AI202',
     courseName: 'Machine Learning & Neural Foundations',
     department: 'Computer Science & Engineering',
@@ -48,6 +60,7 @@ export const INITIAL_COURSES: Course[] = [
 export const INITIAL_ENROLLMENTS: CourseEnrollment[] = [
   {
     id: 'enr_1',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     studentUid: 'student_aarav_patel',
     studentName: 'Aarav Patel',
@@ -58,6 +71,7 @@ export const INITIAL_ENROLLMENTS: CourseEnrollment[] = [
   },
   {
     id: 'enr_2',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs304',
     studentUid: 'student_aarav_patel',
     studentName: 'Aarav Patel',
@@ -68,6 +82,7 @@ export const INITIAL_ENROLLMENTS: CourseEnrollment[] = [
   },
   {
     id: 'enr_3',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     studentUid: 'student_diya_sharma',
     studentName: 'Diya Sharma',
@@ -78,6 +93,7 @@ export const INITIAL_ENROLLMENTS: CourseEnrollment[] = [
   },
   {
     id: 'enr_4',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     studentUid: 'student_rohan_verma',
     studentName: 'Rohan Verma',
@@ -88,6 +104,7 @@ export const INITIAL_ENROLLMENTS: CourseEnrollment[] = [
   },
   {
     id: 'enr_5',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     studentUid: 'student_ananya_iyer',
     studentName: 'Ananya Iyer',
@@ -101,6 +118,7 @@ export const INITIAL_ENROLLMENTS: CourseEnrollment[] = [
 export const INITIAL_REQUESTS: EnrollmentRequest[] = [
   {
     id: 'req_101',
+    organizationId: 'org_apex_tech',
     studentId: 'student_priya_nair',
     studentRollNo: '22CS064',
     studentName: 'Priya Nair',
@@ -114,6 +132,7 @@ export const INITIAL_REQUESTS: EnrollmentRequest[] = [
   },
   {
     id: 'req_102',
+    organizationId: 'org_apex_tech',
     studentId: 'student_kavya_menon',
     studentRollNo: '22CS051',
     studentName: 'Kavya Menon',
@@ -130,6 +149,7 @@ export const INITIAL_REQUESTS: EnrollmentRequest[] = [
 export const INITIAL_SESSIONS: AttendanceSession[] = [
   {
     id: 'sess_1',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     courseCode: 'CS301',
     courseName: 'Distributed Systems & Cloud Computing',
@@ -144,6 +164,7 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
   },
   {
     id: 'sess_2',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     courseCode: 'CS301',
     courseName: 'Distributed Systems & Cloud Computing',
@@ -161,6 +182,7 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
 export const INITIAL_ATTENDANCE_RECORDS: AttendanceRecord[] = [
   {
     id: 'rec_1',
+    organizationId: 'org_apex_tech',
     sessionId: 'sess_1',
     courseId: 'course_cs301',
     studentUid: 'student_aarav_patel',
@@ -173,6 +195,7 @@ export const INITIAL_ATTENDANCE_RECORDS: AttendanceRecord[] = [
   },
   {
     id: 'rec_2',
+    organizationId: 'org_apex_tech',
     sessionId: 'sess_1',
     courseId: 'course_cs301',
     studentUid: 'student_diya_sharma',
@@ -185,6 +208,7 @@ export const INITIAL_ATTENDANCE_RECORDS: AttendanceRecord[] = [
   },
   {
     id: 'rec_3',
+    organizationId: 'org_apex_tech',
     sessionId: 'sess_2',
     courseId: 'course_cs301',
     studentUid: 'student_aarav_patel',
@@ -200,6 +224,7 @@ export const INITIAL_ATTENDANCE_RECORDS: AttendanceRecord[] = [
 export const INITIAL_TIMETABLE: TimetableSlot[] = [
   {
     id: 'slot_1',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     courseCode: 'CS301',
     courseName: 'Distributed Systems & Cloud Computing',
@@ -214,6 +239,7 @@ export const INITIAL_TIMETABLE: TimetableSlot[] = [
   },
   {
     id: 'slot_2',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs304',
     courseCode: 'CS304',
     courseName: 'Advanced Database Systems',
@@ -228,6 +254,7 @@ export const INITIAL_TIMETABLE: TimetableSlot[] = [
   },
   {
     id: 'slot_3',
+    organizationId: 'org_apex_tech',
     courseId: 'course_ai202',
     courseCode: 'AI202',
     courseName: 'Machine Learning & Neural Foundations',
@@ -242,6 +269,7 @@ export const INITIAL_TIMETABLE: TimetableSlot[] = [
   },
   {
     id: 'slot_4',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs301',
     courseCode: 'CS301',
     courseName: 'Distributed Systems & Cloud Computing',
@@ -256,6 +284,7 @@ export const INITIAL_TIMETABLE: TimetableSlot[] = [
   },
   {
     id: 'slot_5',
+    organizationId: 'org_apex_tech',
     courseId: 'course_cs304',
     courseCode: 'CS304',
     courseName: 'Advanced Database Systems',
@@ -270,6 +299,7 @@ export const INITIAL_TIMETABLE: TimetableSlot[] = [
   },
   {
     id: 'slot_6',
+    organizationId: 'org_apex_tech',
     courseId: 'course_ai202',
     courseCode: 'AI202',
     courseName: 'Machine Learning & Neural Foundations',

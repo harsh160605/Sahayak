@@ -72,24 +72,31 @@ export const Sidebar: React.FC = () => {
                   {isTeacher ? 'FACULTY' : 'STUDENT'}
                 </span>
               </span>
-              <p className="text-[11px] text-navy-500 font-mono">Academic Portal</p>
+              <p className="text-[11px] text-navy-500 font-mono truncate max-w-[130px]">
+                {currentUser.organizationCode ? `Org: ${currentUser.organizationCode}` : 'Academic Portal'}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* User Card Mini */}
-        <div className="px-4 py-4 m-3 rounded-lg bg-warm-100 border border-warm-300/80">
+        {/* User Card Mini with Organization Name */}
+        <div className="px-4 py-3 m-3 rounded-lg bg-warm-100 border border-warm-300/80 space-y-1.5">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-navy-800 text-warm-50 flex items-center justify-center font-semibold text-xs tracking-wide">
+            <div className="w-8 h-8 rounded-full bg-navy-800 text-warm-50 flex items-center justify-center font-semibold text-xs tracking-wide shrink-0">
               {currentUser.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-navy-900 truncate">{currentUser.fullName}</p>
-              <p className="text-[11px] text-navy-500 font-mono truncate">
+              <p className="text-[10px] text-navy-500 font-mono truncate">
                 {isTeacher ? currentUser.facultyId : currentUser.studentId}
               </p>
             </div>
           </div>
+          {currentUser.organizationName && (
+            <div className="pt-1.5 border-t border-warm-200 text-[10px] text-teal-800 font-mono font-medium truncate">
+              🏛️ {currentUser.organizationName}
+            </div>
+          )}
         </div>
 
         {/* Navigation Items */}

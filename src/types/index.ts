@@ -1,10 +1,22 @@
 export type UserRole = 'teacher' | 'student';
 
+export interface Organization {
+  id: string; // e.g. "org_mit_pune"
+  code: string; // e.g. "SA-7821" or "MIT2024" (unique uppercase join code)
+  name: string; // e.g. "Apex Institute of Technology"
+  city?: string;
+  adminEmail: string;
+  createdAt: string;
+}
+
 export interface UserProfile {
   uid: string;
   fullName: string;
   email: string;
   role: UserRole;
+  organizationId?: string; // Links user to their institution
+  organizationCode?: string; // Easy human-readable code
+  organizationName?: string;
   studentId?: string; // Roll number for students
   facultyId?: string; // ID for teachers
   department: string;
@@ -17,6 +29,8 @@ export interface UserProfile {
 
 export interface Course {
   id: string;
+  organizationId?: string;
+  organizationCode?: string;
   courseCode: string;
   courseName: string;
   department: string;
@@ -32,6 +46,8 @@ export interface Course {
 
 export interface EnrollmentRequest {
   id: string;
+  organizationId?: string;
+  organizationCode?: string;
   studentId: string; // student's auth UID
   studentRollNo: string;
   studentName: string;
@@ -48,6 +64,8 @@ export interface EnrollmentRequest {
 
 export interface CourseEnrollment {
   id: string;
+  organizationId?: string;
+  organizationCode?: string;
   courseId: string;
   studentUid: string;
   studentName: string;
@@ -67,6 +85,8 @@ export interface GeoLocationConfig {
 
 export interface AttendanceSession {
   id: string;
+  organizationId?: string;
+  organizationCode?: string;
   courseId: string;
   courseCode: string;
   courseName: string;
@@ -86,6 +106,8 @@ export interface AttendanceSession {
 
 export interface AttendanceRecord {
   id: string; // usually session_{sessionId}_student_{studentUid}
+  organizationId?: string;
+  organizationCode?: string;
   sessionId: string;
   courseId: string;
   studentUid: string;
@@ -106,6 +128,8 @@ export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Frida
 
 export interface TimetableSlot {
   id: string;
+  organizationId?: string;
+  organizationCode?: string;
   courseId: string;
   courseCode: string;
   courseName: string;
