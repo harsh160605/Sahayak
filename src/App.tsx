@@ -35,6 +35,12 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: 'teach
   return <>{children}</>;
 };
 
+const RootRedirect: React.FC = () => {
+  const { currentUser } = useAuth();
+  if (!currentUser) return <Navigate to="/login" replace />;
+  return <Navigate to={currentUser.role === 'student' ? '/student' : '/teacher'} replace />;
+};
+
 export const App: React.FC = () => {
   return (
     <AuthProvider>
@@ -45,8 +51,8 @@ export const App: React.FC = () => {
 
             {/* Main Application Shell */}
             <Route element={<Layout />}>
-              {/* Default Redirect */}
-              <Route path="/" element={<Navigate to="/teacher" replace />} />
+              {/* Default Dynamic Redirect based on role */}
+              <Route path="/" element={<RootRedirect />} />
 
               {/* Teacher Routes */}
               <Route path="/teacher" element={
@@ -142,4 +148,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

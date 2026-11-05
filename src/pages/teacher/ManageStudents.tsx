@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { Users, Search, Plus, Trash2, CheckCircle, Clock } from 'lucide-react';
+import { Users, Search, Plus, Trash2, CheckCircle, Clock, X, User } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 export const ManageStudents: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const preselectedCourse = searchParams.get('courseId');
+
   const { currentUser } = useAuth();
   const { courses, enrollments, manuallyEnrollStudent, removeStudentFromCourse } = useData();
 
   const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(preselectedCourse || myCourses[0]?.id || '');
   const [search, setSearch] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -17,7 +21,9 @@ export const ManageStudents: React.FC = () => {
   const [studentName, setStudentName] = useState('');
   const [studentRollNo, setStudentRollNo] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
+  const selectedCourse = courses.find(c => c.id === selectedCourseId);
   const currentCourseEnrollments = enrollments.filter(
     e => e.courseId === selectedCourseId && e.status === 'active'
   );
@@ -28,22 +34,29 @@ export const ManageStudents: React.FC = () => {
     e.studentEmail.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleManualAdd = (e: React.FormEvent) => {
+  const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCourseId) return;
+    setSubmitting(true);
 
-    manuallyEnrollStudent(
-      selectedCourseId,
-      `student_custom_${Date.now()}`,
-      studentName.trim(),
-      studentRollNo.trim().toUpperCase(),
-      studentEmail.trim()
-    );
+    try {
+      await manuallyEnrollStudent(
+        selectedCourseId,
+        `student_custom_${Date.now()}`,
+        studentName.trim(),
+        studentRollNo.trim().toUpperCase(),
+        studentEmail.trim()
+      );
 
-    setIsAddModalOpen(false);
-    setStudentName('');
-    setStudentRollNo('');
-    setStudentEmail('');
+      setIsAddModalOpen(false);
+      setStudentName('');
+      setStudentRollNo('');
+      setStudentEmail('');
+    } catch (err: any) {
+      alert('Failed to enroll student: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -58,13 +71,14 @@ export const ManageStudents: React.FC = () => {
             Manage Enrolled Students
           </h1>
           <p className="text-xs text-navy-600 mt-1">
-            Search, manually enroll, or manage student rosters course by course.
+            Search, manually enroll, or inspect student rosters course by course.
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
+          disabled={!selectedCourseId}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95 disabled:opacity-50"
         >
           <Plus className="h-4 w-4" />
           <span>Add Student Manually</span>
@@ -72,13 +86,13 @@ export const ManageStudents: React.FC = () => {
       </div>
 
       {/* Course Filter Selector & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-navy-700 font-mono uppercase">Course:</label>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface p-4 rounded-xl border border-warm-300 shadow-subtle">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <label className="text-xs font-semibold text-navy-700 font-mono uppercase shrink-0">Course:</label>
           <select
             value={selectedCourseId}
             onChange={e => setSelectedCourseId(e.target.value)}
-            className="px-3 py-1.5 rounded-md border border-warm-300 text-xs bg-surface text-navy-900 focus:outline-none focus:border-primary font-medium"
+            className="px-3 py-1.5 rounded-md border border-warm-300 text-xs bg-surface text-navy-900 focus:outline-none focus:border-primary font-medium truncate max-w-xs sm:max-w-md"
           >
             {myCourses.map(c => (
               <option key={c.id} value={c.id}>
@@ -95,69 +109,131 @@ export const ManageStudents: React.FC = () => {
             placeholder="Search student or roll no..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-md bg-surface border border-warm-300 text-xs text-navy-900 placeholder-navy-400 focus:outline-none focus:border-primary shadow-subtle"
+            className="w-full pl-9 pr-3 py-1.5 rounded-md bg-surface border border-warm-300 text-xs text-navy-900 placeholder-navy-400 focus:outline-none focus:border-primary"
           />
         </div>
       </div>
 
       {/* Roster Table */}
-      <div className="bg-surface rounded-lg border border-warm-300 overflow-hidden shadow-subtle">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-warm-100 border-b border-warm-300 text-navy-600 font-mono uppercase text-[10px]">
-            <tr>
-              <th className="p-3">#</th>
-              <th className="p-3">Student Name</th>
-              <th className="p-3">Roll Number</th>
-              <th className="p-3">Email Address</th>
-              <th className="p-3">Enrolled Date</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-warm-200">
-            {filteredEnrollments.length === 0 ? (
+      <div className="bg-surface rounded-xl border border-warm-300 overflow-hidden shadow-subtle">
+        <div className="px-4 py-3 bg-warm-100 border-b border-warm-300 flex items-center justify-between">
+          <span className="text-xs font-bold text-navy-900">
+            {selectedCourse?.courseCode} Roster ({currentCourseEnrollments.length} Enrolled)
+          </span>
+          <span className="text-[11px] font-mono text-navy-500">
+            Showing {filteredEnrollments.length} students
+          </span>
+        </div>
+
+        {/* Mobile View: Cards */}
+        <div className="md:hidden divide-y divide-warm-200">
+          {filteredEnrollments.length === 0 ? (
+            <div className="p-8 text-center text-xs text-navy-500 italic">
+              No students enrolled in this course roster.
+            </div>
+          ) : (
+            filteredEnrollments.map((student, idx) => (
+              <div key={student.id} className="p-4 flex items-center justify-between gap-3">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-primary">#{idx + 1}</span>
+                    <span className="text-xs font-bold text-navy-900 truncate">{student.studentName}</span>
+                  </div>
+                  <p className="text-[11px] font-mono text-navy-600">{student.studentRollNo}</p>
+                  <p className="text-[11px] text-navy-500 truncate">{student.studentEmail}</p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Remove ${student.studentName} (${student.studentRollNo}) from this course roster?`)) {
+                      removeStudentFromCourse(selectedCourseId, student.studentUid);
+                    }
+                  }}
+                  className="p-2 rounded text-navy-400 hover:text-rose-700 hover:bg-rose-50 transition-colors shrink-0"
+                  title="Remove student"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-warm-50 border-b border-warm-200 text-navy-600 font-mono uppercase text-[10px]">
               <tr>
-                <td colSpan={6} className="p-6 text-center text-navy-500 italic">
-                  No students currently enrolled in this course roster.
-                </td>
+                <th className="p-3 w-12">#</th>
+                <th className="p-3">Student Name</th>
+                <th className="p-3">Roll Number</th>
+                <th className="p-3">Email Address</th>
+                <th className="p-3">Enrolled Date</th>
+                <th className="p-3 text-right">Actions</th>
               </tr>
-            ) : (
-              filteredEnrollments.map((student, idx) => (
-                <tr key={student.id} className="hover:bg-warm-50 transition-colors">
-                  <td className="p-3 font-mono text-navy-400 text-[11px]">{idx + 1}</td>
-                  <td className="p-3 font-semibold text-navy-900">{student.studentName}</td>
-                  <td className="p-3 font-mono text-navy-700 font-medium">{student.studentRollNo}</td>
-                  <td className="p-3 font-mono text-navy-500">{student.studentEmail}</td>
-                  <td className="p-3 font-mono text-navy-500">{formatDate(student.enrolledAt)}</td>
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`Remove ${student.studentName} from this course? Historical attendance records will remain preserved.`)) {
-                          removeStudentFromCourse(selectedCourseId, student.studentUid);
-                        }
-                      }}
-                      className="p-1.5 rounded text-navy-400 hover:text-red-700 hover:bg-red-50 transition-colors"
-                      title="Remove from course roster"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+            </thead>
+            <tbody className="divide-y divide-warm-200">
+              {filteredEnrollments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-navy-500 italic">
+                    No students currently enrolled in this course roster.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filteredEnrollments.map((student, idx) => (
+                  <tr key={student.id} className="hover:bg-warm-50/80 transition-colors">
+                    <td className="p-3 font-mono text-navy-400 text-[11px]">{idx + 1}</td>
+                    <td className="p-3 font-semibold text-navy-900">{student.studentName}</td>
+                    <td className="p-3 font-mono text-navy-700 font-medium">{student.studentRollNo}</td>
+                    <td className="p-3 font-mono text-navy-500">{student.studentEmail}</td>
+                    <td className="p-3 font-mono text-navy-500">{formatDate(student.enrolledAt)}</td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Remove ${student.studentName} (${student.studentRollNo}) from this course?`)) {
+                            removeStudentFromCourse(selectedCourseId, student.studentUid);
+                          }
+                        }}
+                        className="p-1.5 rounded text-navy-400 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                        title="Remove from course roster"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Manual Add Student Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/50 backdrop-blur-sm">
-          <div className="bg-surface rounded-xl border border-warm-300 shadow-elevated w-full max-w-md p-6 space-y-4">
-            <div className="border-b border-warm-200 pb-3">
-              <h3 className="text-base font-bold text-navy-900">Manually Enroll Student</h3>
-              <p className="text-xs text-navy-500">Directly add an existing student to the course roster.</p>
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setIsAddModalOpen(false)}
+        >
+          <div 
+            className="bg-surface rounded-xl border border-warm-300 shadow-elevated w-full max-w-md p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="border-b border-warm-200 pb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-navy-900">Manually Enroll Student</h3>
+                <p className="text-xs text-navy-500">
+                  Enrolling into <strong className="text-navy-900">{selectedCourse?.courseCode}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 text-navy-400 hover:text-navy-700 rounded"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            <form onSubmit={handleManualAdd} className="space-y-3">
+            <form onSubmit={handleManualAdd} className="space-y-3.5">
               <div>
                 <label className="text-xs font-semibold text-navy-700 block mb-1">Student Full Name</label>
                 <input
@@ -204,9 +280,10 @@ export const ManageStudents: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary-hover text-white shadow-subtle"
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary-hover text-white shadow-subtle disabled:opacity-50"
                 >
-                  Add Student
+                  {submitting ? 'Enrolling...' : 'Confirm Enrollment'}
                 </button>
               </div>
             </form>
@@ -216,4 +293,3 @@ export const ManageStudents: React.FC = () => {
     </div>
   );
 };
-

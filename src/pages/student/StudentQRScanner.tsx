@@ -9,16 +9,20 @@ import {
   ShieldCheck, 
   Sparkles,
   MapPin,
-  Navigation
+  Navigation,
+  ArrowRight,
+  Radio,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import confetti from 'canvas-confetti';
 import { formatTime } from '../../lib/utils';
+import { Link } from 'react-router-dom';
 
 export const StudentQRScanner: React.FC = () => {
   const { currentUser } = useAuth();
-  const { verifyAndRecordAttendance } = useData();
+  const { verifyAndRecordAttendance, sessions, enrollments } = useData();
 
   const [scanning, setScanning] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -37,6 +41,15 @@ export const StudentQRScanner: React.FC = () => {
   
   const [simulatedTokenInput, setSimulatedTokenInput] = useState<string>('');
   const scannerRef = useRef<any>(null);
+
+  // Find active lecture for student to enable quick 1-click simulator
+  const myEnrolledCourseIds = enrollments
+    .filter(e => e.studentUid === currentUser?.uid && e.status === 'active')
+    .map(e => e.courseId);
+
+  const activeLecture = sessions.find(
+    s => myEnrolledCourseIds.includes(s.courseId) && (s.status === 'active' || s.status === 'paused')
+  );
 
   // Request GPS coordinates for geofencing compliance
   const acquireGPSLocation = (): Promise<{ latitude: number; longitude: number } | null> => {
@@ -98,7 +111,7 @@ export const StudentQRScanner: React.FC = () => {
     } catch (err: any) {
       console.warn('Camera initiation notice:', err);
       setCameraError(
-        'Unable to initialize physical camera. Ensure permissions are granted, or use the direct verification simulator below.'
+        'Unable to initialize camera device. Grant camera permissions in browser, or use the direct verification simulator below.'
       );
       setScanning(false);
     }
@@ -117,7 +130,7 @@ export const StudentQRScanner: React.FC = () => {
   };
 
   const handleScanSuccess = async (token: string) => {
-    if (!currentUser) return;
+    if (!currentUser || !token.trim()) return;
 
     // Check GPS coords
     let coords = studentCoords;
@@ -127,7 +140,7 @@ export const StudentQRScanner: React.FC = () => {
 
     // Trigger server-side validation with geofence
     const result = await verifyAndRecordAttendance(
-      token,
+      token.trim(),
       currentUser.uid,
       currentUser.fullName,
       currentUser.studentId || 'STUDENT',
@@ -169,34 +182,70 @@ export const StudentQRScanner: React.FC = () => {
         </p>
       </div>
 
+      {/* Active Lecture Context Banner */}
+      {activeLecture && (
+        <div className="p-4 rounded-xl bg-teal-50 border border-teal-300 shadow-subtle flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Radio className="h-4 w-4 text-teal-700 animate-pulse shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-teal-950 font-mono">
+                {activeLecture.courseCode} — {activeLecture.courseName}
+              </p>
+              <p className="text-[11px] text-teal-800">
+                Topic: {activeLecture.lectureTopic} &bull; Started {formatTime(activeLecture.startedAt)}
+              </p>
+            </div>
+          </div>
+          {activeLecture.geofence?.enabled && (
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-200 text-teal-900 shrink-0">
+              GPS {activeLecture.geofence.radiusMeters}m
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Verification Feedback Result */}
       {scanResult && (
         <div 
-          className={`p-5 rounded-lg border shadow-subtle ${
+          className={`p-5 rounded-xl border shadow-subtle ${
             scanResult.success 
               ? 'bg-emerald-50 border-emerald-300 text-emerald-950' 
-              : 'bg-red-50 border-red-300 text-red-950'
+              : 'bg-rose-50 border-rose-300 text-rose-950'
           }`}
         >
           <div className="flex items-start gap-3">
             {scanResult.success ? (
               <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
             ) : (
-              <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+              <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
             )}
-            <div className="space-y-1">
+            <div className="space-y-1.5 flex-1">
               <h3 className="text-sm font-bold">
                 {scanResult.success ? 'Attendance Successfully Recorded!' : 'Verification Failed'}
               </h3>
               <p className="text-xs leading-relaxed">{scanResult.message}</p>
               {scanResult.courseName && (
-                <div className="pt-2 text-xs font-mono space-y-0.5">
+                <div className="pt-2 text-xs font-mono space-y-1 bg-white/60 p-3 rounded-lg border border-emerald-200">
                   <p><strong>Course:</strong> {scanResult.courseName}</p>
                   <p><strong>Topic:</strong> {scanResult.sessionTopic}</p>
                   <p><strong>Timestamp:</strong> {formatTime(scanResult.markedAt || '')}</p>
                   {scanResult.distanceMeters !== undefined && (
-                    <p className="text-teal-700"><strong>GPS Proximity:</strong> ~{scanResult.distanceMeters}m from instructor</p>
+                    <p className="text-teal-800 font-bold">
+                      <strong>GPS Distance:</strong> ~{scanResult.distanceMeters}m from classroom center
+                    </p>
                   )}
+                </div>
+              )}
+
+              {scanResult.success && (
+                <div className="pt-2">
+                  <Link
+                    to="/student/history"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-800 hover:underline"
+                  >
+                    <span>View in attendance history</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
                 </div>
               )}
             </div>
@@ -205,13 +254,15 @@ export const StudentQRScanner: React.FC = () => {
       )}
 
       {/* Geofencing Location Status Badge */}
-      <div className="flex items-center justify-between p-3 rounded-lg bg-surface border border-warm-300 text-xs shadow-subtle">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-lg bg-surface border border-warm-300 text-xs shadow-subtle gap-2">
         <div className="flex items-center gap-2">
-          <MapPin className={`h-4 w-4 ${studentCoords ? 'text-primary' : 'text-navy-400'}`} />
+          <MapPin className={`h-4 w-4 shrink-0 ${studentCoords ? 'text-primary' : 'text-navy-400'}`} />
           <div>
             <span className="font-semibold text-navy-900">GPS Classroom Perimeter Status: </span>
             {studentCoords ? (
-              <span className="text-emerald-700 font-mono font-medium">Locked ({studentCoords.latitude.toFixed(4)}, {studentCoords.longitude.toFixed(4)})</span>
+              <span className="text-emerald-700 font-mono font-medium">
+                Locked ({studentCoords.latitude.toFixed(4)}, {studentCoords.longitude.toFixed(4)})
+              </span>
             ) : locating ? (
               <span className="text-amber-700 italic">Acquiring GPS fix...</span>
             ) : (
@@ -222,7 +273,7 @@ export const StudentQRScanner: React.FC = () => {
         <button
           type="button"
           onClick={acquireGPSLocation}
-          className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 font-mono"
+          className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 font-mono self-start sm:self-auto"
         >
           <Navigation className="h-3 w-3" />
           <span>{locating ? 'Locating...' : 'Refresh GPS'}</span>
@@ -230,7 +281,7 @@ export const StudentQRScanner: React.FC = () => {
       </div>
 
       {locatingError && (
-        <div className="p-2.5 rounded bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
           <span>{locatingError}</span>
         </div>
@@ -238,18 +289,18 @@ export const StudentQRScanner: React.FC = () => {
 
       {/* Camera Viewfinder Arena */}
       <div className="bg-surface rounded-xl border border-warm-300 p-6 shadow-subtle space-y-6">
-        <div className="relative rounded-lg overflow-hidden bg-navy-950 min-h-[300px] flex flex-col items-center justify-center">
+        <div className="relative rounded-xl overflow-hidden bg-[#0A0F1D] min-h-[300px] flex flex-col items-center justify-center">
           <div id="qr-reader-container" className="w-full h-full" />
 
           {!scanning && !scanResult?.success && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-warm-300 bg-navy-900/90 space-y-3">
-              <div className="h-12 w-12 rounded-full bg-navy-800 border border-navy-700 flex items-center justify-center text-teal-400">
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center text-warm-300 bg-[#0A0F1D]/90 space-y-3">
+              <div className="h-12 w-12 rounded-full bg-navy-900 border border-navy-700 flex items-center justify-center text-teal-400 shadow-subtle">
                 <Camera className="h-6 w-6" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-white">Camera Access Required</p>
                 <p className="text-xs text-navy-400 max-w-xs mt-1">
-                  Point your smartphone or web camera at the instructor’s screen.
+                  Point your mobile or web camera at the projector screen.
                 </p>
               </div>
               <button
@@ -265,9 +316,9 @@ export const StudentQRScanner: React.FC = () => {
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
               <button
                 onClick={stopScanner}
-                className="px-4 py-1.5 rounded-full bg-navy-900/80 backdrop-blur border border-navy-700 text-white text-xs font-mono flex items-center gap-1.5 hover:bg-navy-800"
+                className="px-4 py-1.5 rounded-full bg-navy-900/90 backdrop-blur border border-navy-700 text-white text-xs font-mono flex items-center gap-1.5 hover:bg-navy-800 transition-colors shadow-elevated"
               >
-                <CameraOff className="h-3.5 w-3.5 text-red-400" />
+                <CameraOff className="h-3.5 w-3.5 text-rose-400" />
                 <span>Stop Scanner</span>
               </button>
             </div>
@@ -275,31 +326,43 @@ export const StudentQRScanner: React.FC = () => {
         </div>
 
         {cameraError && (
-          <div className="p-3 bg-amber-50 rounded-md border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
             <span>{cameraError}</span>
           </div>
         )}
 
-        {/* Quick Diagnostic Token Entry for Testing */}
-        <div className="pt-4 border-t border-warm-200">
-          <span className="text-[11px] font-mono text-navy-500 uppercase tracking-wider block mb-2">
-            Developer / One-Click Scanner Simulator
-          </span>
-          <p className="text-xs text-navy-600 mb-3">
-            If testing on a desktop machine without pointing a phone camera at the teacher screen, you can paste or simulate the current live session token here:
+        {/* Diagnostic Token Entry for Testing / Simulator */}
+        <div className="pt-4 border-t border-warm-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-mono text-navy-500 uppercase tracking-wider font-semibold">
+              Evaluation & Desktop Scanner Simulator
+            </span>
+            {activeLecture?.currentQrToken && (
+              <button
+                type="button"
+                onClick={() => setSimulatedTokenInput(activeLecture.currentQrToken || '')}
+                className="text-[11px] font-mono text-primary font-semibold hover:underline flex items-center gap-1"
+              >
+                <span>Paste Active Lecture Token</span>
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-navy-600">
+            For testing on a desktop machine without pointing a phone camera at a second display, enter or simulate the live lecture token:
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               placeholder="e.g. SA_TOKEN::sess_... (or paste token)"
               value={simulatedTokenInput}
               onChange={e => setSimulatedTokenInput(e.target.value)}
-              className="flex-1 px-3 py-2 text-xs rounded-md border border-warm-300 font-mono focus:outline-none focus:border-primary"
+              className="flex-1 px-3 py-2 text-xs rounded-md border border-warm-300 font-mono text-navy-900 focus:outline-none focus:border-primary"
             />
             <button
               onClick={() => handleScanSuccess(simulatedTokenInput)}
-              className="px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold rounded-md transition-colors"
+              disabled={!simulatedTokenInput.trim()}
+              className="px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold rounded-md transition-colors disabled:opacity-50"
             >
               Verify Token
             </button>
