@@ -1,91 +1,85 @@
 import React, { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { BookOpen, CalendarDays, Menu, Moon, QrCode, Search, Sun, X, LayoutDashboard } from 'lucide-react';
 import { Sidebar } from './Sidebar';
-import { Bell, ShieldCheck, Search, Menu, X } from 'lucide-react';
+import { CommandPalette } from './CommandPalette';
+import { NotificationPopover } from './NotificationPopover';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
+import { useTheme } from '../context/ThemeContext';
+
+const routeTitles: Record<string, string> = {
+  '/teacher': 'Overview', '/teacher/courses': 'My courses', '/teacher/timetable': 'Class schedule',
+  '/teacher/students': 'Student directory', '/teacher/take-attendance': 'Take attendance',
+  '/teacher/history': 'Attendance history', '/teacher/reports': 'Reports', '/teacher/requests': 'Join requests',
+  '/student': 'Overview', '/student/scan': 'Check in', '/student/timetable': 'Class schedule',
+  '/student/courses': 'My courses', '/student/join': 'Find a course', '/student/history': 'Attendance history',
+  '/profile': 'Account settings',
+};
 
 export const Layout: React.FC = () => {
   const { currentUser } = useAuth();
+  const { sessions, enrollments } = useData();
+  const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const location = useLocation();
-
-  // If in live attendance presentation mode, don't wrap in standard sidebar layout
+  const isTeacher = currentUser?.role === 'teacher';
   const isLiveScreen = location.pathname.includes('/live-session');
 
-  if (isLiveScreen) {
-    return <Outlet />;
-  }
+  if (isLiveScreen) return <Outlet />;
+
+  const courseIds = enrollments.filter(e => e.studentUid === currentUser?.uid && e.status === 'active').map(e => e.courseId);
+  const hasLive = sessions.some(s => s.status === 'active' && (isTeacher ? s.teacherId === currentUser?.uid : courseIds.includes(s.courseId)));
+  const initials = currentUser?.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const title = routeTitles[location.pathname] || 'SmartAttend';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Desktop Sidebar */}
-      <div className="hidden md:flex shrink-0">
-        <Sidebar />
-      </div>
+    <div className="workspace-shell">
+      <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
 
-      {/* Mobile Drawer */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden bg-navy-900/40 backdrop-blur-sm">
-          <div className="w-64 bg-surface h-full shadow-elevated">
-            <div className="p-3 flex justify-end">
-              <button 
-                onClick={() => setMobileMenuOpen(false)}
-                className="p-1.5 rounded-md hover:bg-warm-200 text-navy-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <Sidebar />
-          </div>
-          <div className="flex-1" onClick={() => setMobileMenuOpen(false)} />
+      <div className="desktop-sidebar"><Sidebar /></div>
+      {mobileMenuOpen && <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)}>
+        <div className="mobile-drawer" onClick={event => event.stopPropagation()}>
+          <div className="mobile-drawer-top"><span>Menu</span><button className="icon-button" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"><X size={19} /></button></div>
+          <Sidebar onNavigate={() => setMobileMenuOpen(false)} />
         </div>
-      )}
+      </div>}
 
-      {/* Main Content Arena */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Editorial Topbar */}
-        <header className="h-16 bg-surface border-b border-warm-300 px-6 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setMobileMenuOpen(true)}
-              className="p-1.5 rounded-md text-navy-700 hover:bg-warm-200 md:hidden"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="flex items-center gap-2 text-xs text-navy-500 font-mono">
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              <span>ACADEMIC VERIFICATION SYSTEM</span>
-              <span className="hidden sm:inline text-warm-400">/</span>
-              <span className="hidden sm:inline font-sans text-navy-700 font-medium">
-                {currentUser?.department || 'Department of Engineering'}
-              </span>
+      <div className="workspace-main">
+        <header className="workspace-topbar">
+          <div className="topbar-heading">
+            <button className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
+            <div className="topbar-title-wrap">
+              <div className="topbar-overline">{isTeacher ? 'FACULTY WORKSPACE' : 'STUDENT WORKSPACE'}</div>
+              <h1 className="topbar-title">{title}</h1>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-warm-100 rounded-md border border-warm-300 text-xs text-navy-500">
-              <Search className="h-3.5 w-3.5 text-navy-400" />
-              <span>Cmd + K to search</span>
-            </div>
-
-            <div className="h-8 w-px bg-warm-300 mx-1" />
-
-            <button 
-              className="relative p-2 rounded-md text-navy-600 hover:bg-warm-200/80 transition-colors"
-              title="Notifications"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary" />
+          <div className="topbar-actions">
+            {hasLive && <span className="live-indicator"><span className="live-indicator-dot" />{isTeacher ? 'Class in progress' : 'Check-in open'}</span>}
+            <button id="search-palette-trigger" className="search-trigger" onClick={() => setCommandPaletteOpen(true)} aria-label="Search pages and actions">
+              <Search size={16} /><span>Search anything</span><kbd>⌘ K</kbd>
             </button>
+            <NotificationPopover />
+            <button className="icon-button theme-toggle" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} title="Change appearance">
+              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+            <NavLink to="/profile" className="topbar-avatar" title="Open account settings">{initials}</NavLink>
           </div>
         </header>
 
-        {/* Scrollable Page Body */}
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        <main className="workspace-content" key={location.pathname}>
           <Outlet />
         </main>
+
+        <nav className="mobile-bottom-nav" aria-label="Quick navigation">
+          <NavLink to={isTeacher ? '/teacher' : '/student'} end className={({ isActive }) => isActive ? 'mobile-nav-item active' : 'mobile-nav-item'}><LayoutDashboard size={18} /><span>Home</span></NavLink>
+          <NavLink to={isTeacher ? '/teacher/take-attendance' : '/student/scan'} className={({ isActive }) => isActive ? 'mobile-nav-item active' : 'mobile-nav-item'}><span className="mobile-nav-icon-wrap"><QrCode size={18} />{hasLive && <i />}</span><span>{isTeacher ? 'Roll call' : 'Check in'}</span></NavLink>
+          <NavLink to={isTeacher ? '/teacher/timetable' : '/student/timetable'} className={({ isActive }) => isActive ? 'mobile-nav-item active' : 'mobile-nav-item'}><CalendarDays size={18} /><span>Schedule</span></NavLink>
+          <NavLink to={isTeacher ? '/teacher/courses' : '/student/courses'} className={({ isActive }) => isActive ? 'mobile-nav-item active' : 'mobile-nav-item'}><BookOpen size={18} /><span>Courses</span></NavLink>
+          <button className="mobile-nav-item" onClick={() => setMobileMenuOpen(true)}><Menu size={18} /><span>More</span></button>
+        </nav>
       </div>
     </div>
   );
 };
-

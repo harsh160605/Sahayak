@@ -1,260 +1,100 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { QrCode, Shield, ArrowRight, CheckCircle2, AlertCircle, Database } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { ArrowRight, BookOpen, CalendarDays, Check, Eye, EyeOff, GraduationCap, LockKeyhole, Mail, Moon, Sun, UserRound } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export const Login: React.FC = () => {
   const { loginAsDemoUser, loginWithEmail, registerUser, isLiveFirebase } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
-
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [role, setRole] = useState<'teacher' | 'student'>('teacher');
-
-  // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [department, setDepartment] = useState('Computer Science & Engineering');
   const [studentId, setStudentId] = useState('');
   const [facultyId, setFacultyId] = useState('');
   const [semester, setSemester] = useState('6th Semester');
-
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setErrorMsg(null);
     setLoading(true);
-
     if (isLiveFirebase) {
       if (mode === 'login') {
-        const res = await loginWithEmail(email, password);
-        if (res.success) {
-          navigate(role === 'teacher' ? '/teacher' : '/student');
-        } else {
-          setErrorMsg(res.error || 'Invalid credentials or user not found.');
-        }
+        const result = await loginWithEmail(email, password);
+        if (result.success) navigate(role === 'teacher' ? '/teacher' : '/student');
+        else setErrorMsg(result.error || 'We couldn’t sign you in. Check your details and try again.');
       } else {
-        // Registration
-        const profileData = {
-          fullName: fullName.trim(),
-          email: email.trim(),
-          role,
-          department: department.trim(),
-          ...(role === 'student' ? { studentId: studentId.trim().toUpperCase(), semester } : { facultyId: facultyId.trim().toUpperCase() })
-        };
-        const res = await registerUser(email, password, profileData);
-        if (res.success) {
-          navigate(role === 'teacher' ? '/teacher' : '/student');
-        } else {
-          setErrorMsg(res.error || 'Failed to create user account.');
-        }
+        const profileData = { fullName: fullName.trim(), email: email.trim(), role, department: department.trim(), ...(role === 'student' ? { studentId: studentId.trim().toUpperCase(), semester } : { facultyId: facultyId.trim().toUpperCase() }) };
+        const result = await registerUser(email, password, profileData);
+        if (result.success) navigate(role === 'teacher' ? '/teacher' : '/student');
+        else setErrorMsg(result.error || 'We couldn’t create your account. Please try again.');
       }
     } else {
-      // Demo fallback mode
       loginAsDemoUser(role);
       navigate(role === 'teacher' ? '/teacher' : '/student');
     }
     setLoading(false);
   };
 
-  const handleQuickDemo = (demoRole: 'teacher' | 'student') => {
+  const enterDemo = (demoRole: 'teacher' | 'student') => {
     loginAsDemoUser(demoRole);
     navigate(demoRole === 'teacher' ? '/teacher' : '/student');
   };
 
-  return (
-    <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-2">
-        <div className="h-12 w-12 rounded-lg bg-navy-900 mx-auto flex items-center justify-center text-primary shadow-subtle">
-          <QrCode className="h-7 w-7 text-primary" strokeWidth={2.2} />
+  return <div className="login-page">
+    <header className="login-header"><div className="login-brand"><span className="login-brand-icon"><GraduationCap size={20} /></span><span>SmartAttend</span></div><div className="login-header-actions"><span className="connection-status"><i />{isLiveFirebase ? 'Connected to campus' : 'Preview environment'}</span><button className="icon-button theme-toggle" onClick={toggleTheme} aria-label="Change appearance">{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button></div></header>
+
+    <main className="login-main">
+      <section className="login-story">
+        <div className="story-topline"><span className="story-star">✳</span><span>A calmer way to keep track</span></div>
+        <h1>Show up.<br /><em>Stay in sync.</em></h1>
+        <p className="story-description">Your classes, attendance and course updates, all in one thoughtful little space.</p>
+
+        <div className="story-preview" aria-label="Example of a class schedule">
+          <div className="preview-heading"><div><span className="preview-kicker">A TUESDAY SNAPSHOT</span><strong>Your day, at a glance</strong></div><CalendarDays size={18} /></div>
+          <div className="preview-class"><span className="preview-time">09:00</span><span className="preview-line"><i /></span><div><strong>Human Computer Interaction</strong><small>CS 304 · Studio 2</small></div><span className="preview-check"><Check size={13} /></span></div>
+          <div className="preview-class"><span className="preview-time">11:30</span><span className="preview-line"><i /></span><div><strong>Data Structures</strong><small>CS 212 · Lecture hall B</small></div><span className="preview-count"><BookOpen size={13} /></span></div>
+          <div className="preview-footer"><span><i />Everything in one place</span><span>Made for campus life</span></div>
         </div>
-        <h2 className="text-2xl font-bold tracking-tight text-navy-900">SmartAttend</h2>
-        
-        {/* Backend Indicator Badge */}
-        <div className="flex items-center justify-center gap-1.5 pt-1">
-          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-medium ${
-            isLiveFirebase ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-warm-200 text-navy-700 border border-warm-300'
-          }`}>
-            <Database className="h-3 w-3" />
-            {isLiveFirebase ? 'CONNECTED TO CLOUD FIRESTORE' : 'OFFLINE DEMO MODE'}
-          </span>
-        </div>
-      </div>
+        <div className="story-points"><span><Check size={15} />Easy check-ins</span><span><Check size={15} />Clear attendance records</span><span><Check size={15} />Made for students and faculty</span></div>
+      </section>
 
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-surface py-8 px-6 shadow-card rounded-xl border border-warm-300 sm:px-10 space-y-5">
-          {errorMsg && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
+      <section className="login-form-column">
+        <div className="login-card">
+          <div className="form-intro"><span className="form-eyebrow">WELCOME TO SMARTATTEND</span><h2>{mode === 'login' ? 'Let’s get you in.' : 'Create your account.'}</h2><p>{mode === 'login' ? 'Sign in with your campus account to continue.' : 'A few details and you’ll be ready to go.'}</p></div>
 
-          {/* Mode Tabs: Login vs Register */}
-          <div className="flex items-center border-b border-warm-200 pb-2 justify-between text-xs font-semibold">
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => setMode('login')}
-                className={`pb-1 border-b-2 transition-colors ${
-                  mode === 'login' ? 'border-primary text-primary' : 'border-transparent text-navy-500 hover:text-navy-900'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('register')}
-                className={`pb-1 border-b-2 transition-colors ${
-                  mode === 'register' ? 'border-primary text-primary' : 'border-transparent text-navy-500 hover:text-navy-900'
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
-
-            <span className="text-[10px] uppercase font-mono text-navy-400">
-              {role.toUpperCase()}
-            </span>
+          <div className="role-choice" aria-label="Choose your account type">
+            <button type="button" onClick={() => setRole('teacher')} className={role === 'teacher' ? 'role-choice-option selected' : 'role-choice-option'}><UserRound size={16} /><span>Faculty</span></button>
+            <button type="button" onClick={() => setRole('student')} className={role === 'student' ? 'role-choice-option selected' : 'role-choice-option'}><GraduationCap size={17} /><span>Student</span></button>
           </div>
 
-          {/* Role Tabs */}
-          <div className="grid grid-cols-2 gap-2 p-1 bg-warm-100 rounded-lg border border-warm-300">
-            <button
-              type="button"
-              onClick={() => setRole('teacher')}
-              className={`py-1.5 text-xs font-semibold rounded-md transition-all ${
-                role === 'teacher'
-                  ? 'bg-surface text-navy-900 shadow-subtle'
-                  : 'text-navy-600 hover:text-navy-900'
-              }`}
-            >
-              Faculty
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole('student')}
-              className={`py-1.5 text-xs font-semibold rounded-md transition-all ${
-                role === 'student'
-                  ? 'bg-surface text-navy-900 shadow-subtle'
-                  : 'text-navy-600 hover:text-navy-900'
-              }`}
-            >
-              Student
-            </button>
-          </div>
+          <div className="form-mode-tabs"><button type="button" className={mode === 'login' ? 'selected' : ''} onClick={() => { setMode('login'); setErrorMsg(null); }}>Sign in</button><button type="button" className={mode === 'register' ? 'selected' : ''} onClick={() => { setMode('register'); setErrorMsg(null); }}>Create account</button></div>
 
-          <form onSubmit={handleSubmit} className="space-y-3.5">
-            {mode === 'register' && (
-              <>
-                <div>
-                  <label className="block text-xs font-semibold text-navy-700 mb-1">Full Legal Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Diya Sharma"
-                    value={fullName}
-                    onChange={e => setFullName(e.target.value)}
-                    className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs focus:outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-navy-700 mb-1">
-                      {role === 'teacher' ? 'Faculty ID' : 'Roll Number'}
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder={role === 'teacher' ? 'FAC-CS-109' : '22CS088'}
-                      value={role === 'teacher' ? facultyId : studentId}
-                      onChange={e => role === 'teacher' ? setFacultyId(e.target.value) : setStudentId(e.target.value)}
-                      className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs font-mono uppercase focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-navy-700 mb-1">Department</label>
-                    <input
-                      type="text"
-                      required
-                      value={department}
-                      onChange={e => setDepartment(e.target.value)}
-                      className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold text-navy-700 mb-1">
-                {role === 'teacher' ? 'Faculty College Email' : 'Student College Email'}
-              </label>
-              <input
-                type="email"
-                required
-                placeholder={role === 'teacher' ? 'prof.name@college.edu' : 'student.roll@college.edu'}
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-navy-700 mb-1">Password</label>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs focus:outline-none focus:border-primary"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 px-4 bg-navy-900 hover:bg-navy-800 text-white rounded-md text-xs font-semibold transition-all shadow-subtle disabled:opacity-50"
-            >
-              {loading 
-                ? 'Authenticating...' 
-                : mode === 'login' 
-                  ? `Sign In as ${role === 'teacher' ? 'Faculty' : 'Student'}` 
-                  : `Register Account in Firestore`
-              }
-            </button>
+          {errorMsg && <div className="login-error" role="alert">{errorMsg}</div>}
+          <form className="login-form" onSubmit={handleSubmit}>
+            {mode === 'register' && <>
+              <label className="field-label">Full name<div className="field-wrap"><UserRound size={16} /><input required type="text" autoComplete="name" placeholder="e.g. Diya Sharma" value={fullName} onChange={e => setFullName(e.target.value)} /></div></label>
+              <div className="field-grid"><label className="field-label">{role === 'teacher' ? 'Faculty ID' : 'Student ID'}<div className="field-wrap"><input required type="text" placeholder={role === 'teacher' ? 'FAC-CS-104' : '22CS042'} value={role === 'teacher' ? facultyId : studentId} onChange={e => role === 'teacher' ? setFacultyId(e.target.value) : setStudentId(e.target.value)} /></div></label><label className="field-label">Department<div className="field-wrap"><input required type="text" value={department} onChange={e => setDepartment(e.target.value)} /></div></label></div>
+              {role === 'student' && <label className="field-label">Semester<div className="field-wrap"><select value={semester} onChange={e => setSemester(e.target.value)}>{['1st Semester', '2nd Semester', '3rd Semester', '4th Semester', '5th Semester', '6th Semester', '7th Semester', '8th Semester'].map(value => <option key={value}>{value}</option>)}</select></div></label>}
+            </>}
+            <label className="field-label">Campus email<div className="field-wrap"><Mail size={16} /><input required type="email" autoComplete="email" placeholder={role === 'teacher' ? 'you@campus.edu' : 'name@campus.edu'} value={email} onChange={e => setEmail(e.target.value)} /></div></label>
+            <label className="field-label">Password<div className="field-wrap"><LockKeyhole size={16} /><input required type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} /><button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
+            <button type="submit" className="button-primary login-submit" disabled={loading}>{loading ? 'Just a moment…' : mode === 'login' ? 'Sign in' : 'Create account'}{!loading && <ArrowRight size={17} />}</button>
           </form>
 
-          {/* Quick Demo Shortcuts */}
-          <div className="pt-3 border-t border-warm-200 space-y-2">
-            <span className="text-[10px] uppercase font-mono tracking-wider text-navy-500 block text-center">
-              Quick 1-Click Evaluation Accounts
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('teacher')}
-                className="p-2.5 rounded-md border border-warm-300 bg-warm-100 hover:bg-warm-200 text-left text-xs transition-colors"
-              >
-                <p className="font-semibold text-navy-900">Dr. Alok Sharma</p>
-                <p className="text-[10px] text-primary font-mono">Faculty Demo &rarr;</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('student')}
-                className="p-2.5 rounded-md border border-warm-300 bg-warm-100 hover:bg-warm-200 text-left text-xs transition-colors"
-              >
-                <p className="font-semibold text-navy-900">Aarav Patel</p>
-                <p className="text-[10px] text-primary font-mono">Student Demo &rarr;</p>
-              </button>
-            </div>
-          </div>
+          <div className="demo-divider"><span />or explore a demo<span /></div>
+          <div className="demo-actions"><button type="button" onClick={() => enterDemo('teacher')}><span className="demo-avatar faculty">F</span><span><strong>Faculty demo</strong><small>Explore the teaching workspace</small></span><ArrowRight size={15} /></button><button type="button" onClick={() => enterDemo('student')}><span className="demo-avatar student">S</span><span><strong>Student demo</strong><small>Explore the student workspace</small></span><ArrowRight size={15} /></button></div>
         </div>
-      </div>
-    </div>
-  );
+        <p className="login-help">Having trouble? Contact your campus administrator.</p>
+      </section>
+    </main>
+    <footer className="login-footer"><span>© SmartAttend · Campus attendance, made simple</span><span>Secure campus access <i /></span></footer>
+  </div>;
 };

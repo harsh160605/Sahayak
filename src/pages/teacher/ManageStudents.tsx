@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { Users, Search, Plus, Trash2, CheckCircle, Clock } from 'lucide-react';
+import { Users, Search, Plus, Trash2, CheckCircle, Clock, X, User, ChevronRight } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 export const ManageStudents: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const preselectedCourse = searchParams.get('courseId');
+
   const { currentUser } = useAuth();
   const { courses, enrollments, manuallyEnrollStudent, removeStudentFromCourse } = useData();
 
   const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(preselectedCourse || myCourses[0]?.id || '');
   const [search, setSearch] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -17,7 +21,9 @@ export const ManageStudents: React.FC = () => {
   const [studentName, setStudentName] = useState('');
   const [studentRollNo, setStudentRollNo] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
+  const selectedCourse = courses.find(c => c.id === selectedCourseId);
   const currentCourseEnrollments = enrollments.filter(
     e => e.courseId === selectedCourseId && e.status === 'active'
   );
@@ -28,43 +34,53 @@ export const ManageStudents: React.FC = () => {
     e.studentEmail.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleManualAdd = (e: React.FormEvent) => {
+  const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCourseId) return;
+    setSubmitting(true);
 
-    manuallyEnrollStudent(
-      selectedCourseId,
-      `student_custom_${Date.now()}`,
-      studentName.trim(),
-      studentRollNo.trim().toUpperCase(),
-      studentEmail.trim()
-    );
+    try {
+      await manuallyEnrollStudent(
+        selectedCourseId,
+        `student_custom_${Date.now()}`,
+        studentName.trim(),
+        studentRollNo.trim().toUpperCase(),
+        studentEmail.trim()
+      );
 
-    setIsAddModalOpen(false);
-    setStudentName('');
-    setStudentRollNo('');
-    setStudentEmail('');
+      setIsAddModalOpen(false);
+      setStudentName('');
+      setStudentRollNo('');
+      setStudentEmail('');
+    } catch (err: any) {
+      alert('Failed to enroll student: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {/* Editorial Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-warm-300 pb-4">
+    <div className="max-w-7xl mx-auto space-y-5 animate-fade-in">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
         <div>
-          <span className="text-[11px] font-mono uppercase tracking-wider text-primary font-semibold">
-            ROSTER DIRECTORY
-          </span>
-          <h1 className="text-2xl font-bold tracking-tight text-navy-900 mt-0.5">
-            Manage Enrolled Students
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+              STUDENT DIRECTORY
+            </span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-1">
+            Manage Student Roster
           </h1>
-          <p className="text-xs text-navy-600 mt-1">
-            Search, manually enroll, or manage student rosters course by course.
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Search, inspect, and manually register students into assigned course cohorts.
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
+          disabled={!selectedCourseId}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition-all hover:-translate-y-0.5 disabled:opacity-50"
         >
           <Plus className="h-4 w-4" />
           <span>Add Student Manually</span>
@@ -72,13 +88,13 @@ export const ManageStudents: React.FC = () => {
       </div>
 
       {/* Course Filter Selector & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-navy-700 font-mono uppercase">Course:</label>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 font-mono uppercase shrink-0">Course Filter:</label>
           <select
             value={selectedCourseId}
             onChange={e => setSelectedCourseId(e.target.value)}
-            className="px-3 py-1.5 rounded-md border border-warm-300 text-xs bg-surface text-navy-900 focus:outline-none focus:border-primary font-medium"
+            className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-blue-600 font-medium truncate max-w-xs sm:max-w-md"
           >
             {myCourses.map(c => (
               <option key={c.id} value={c.id}>
@@ -88,125 +104,188 @@ export const ManageStudents: React.FC = () => {
           </select>
         </div>
 
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-navy-400" />
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
           <input
             type="text"
-            placeholder="Search student or roll no..."
+            placeholder="Search by student name or roll no..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-md bg-surface border border-warm-300 text-xs text-navy-900 placeholder-navy-400 focus:outline-none focus:border-primary shadow-subtle"
+            className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-600"
           />
         </div>
       </div>
 
       {/* Roster Table */}
-      <div className="bg-surface rounded-lg border border-warm-300 overflow-hidden shadow-subtle">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-warm-100 border-b border-warm-300 text-navy-600 font-mono uppercase text-[10px]">
-            <tr>
-              <th className="p-3">#</th>
-              <th className="p-3">Student Name</th>
-              <th className="p-3">Roll Number</th>
-              <th className="p-3">Email Address</th>
-              <th className="p-3">Enrolled Date</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-warm-200">
-            {filteredEnrollments.length === 0 ? (
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm transition-colors">
+        <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-900 dark:text-white">
+            {selectedCourse?.courseCode} Roster ({currentCourseEnrollments.length} Enrolled)
+          </span>
+          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            Showing {filteredEnrollments.length} matching students
+          </span>
+        </div>
+
+        {/* Mobile View: Cards */}
+        <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+          {filteredEnrollments.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 italic">
+              No students enrolled in this course roster.
+            </div>
+          ) : (
+            filteredEnrollments.map((student, idx) => (
+              <div key={student.id} className="p-4 flex items-center justify-between gap-3">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">#{idx + 1}</span>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate">{student.studentName}</span>
+                  </div>
+                  <p className="text-[11px] font-mono text-slate-600 dark:text-slate-300">{student.studentRollNo}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{student.studentEmail}</p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Remove ${student.studentName} (${student.studentRollNo}) from this course roster?`)) {
+                      removeStudentFromCourse(selectedCourseId, student.studentUid);
+                    }
+                  }}
+                  className="p-2 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0"
+                  title="Remove student"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop View: Table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-mono uppercase text-[10px]">
               <tr>
-                <td colSpan={6} className="p-6 text-center text-navy-500 italic">
-                  No students currently enrolled in this course roster.
-                </td>
+                <th className="p-3 w-12 text-center">#</th>
+                <th className="p-3">Student Name</th>
+                <th className="p-3">Roll Number</th>
+                <th className="p-3">Email Address</th>
+                <th className="p-3">Enrolled Date</th>
+                <th className="p-3 text-right">Actions</th>
               </tr>
-            ) : (
-              filteredEnrollments.map((student, idx) => (
-                <tr key={student.id} className="hover:bg-warm-50 transition-colors">
-                  <td className="p-3 font-mono text-navy-400 text-[11px]">{idx + 1}</td>
-                  <td className="p-3 font-semibold text-navy-900">{student.studentName}</td>
-                  <td className="p-3 font-mono text-navy-700 font-medium">{student.studentRollNo}</td>
-                  <td className="p-3 font-mono text-navy-500">{student.studentEmail}</td>
-                  <td className="p-3 font-mono text-navy-500">{formatDate(student.enrolledAt)}</td>
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`Remove ${student.studentName} from this course? Historical attendance records will remain preserved.`)) {
-                          removeStudentFromCourse(selectedCourseId, student.studentUid);
-                        }
-                      }}
-                      className="p-1.5 rounded text-navy-400 hover:text-red-700 hover:bg-red-50 transition-colors"
-                      title="Remove from course roster"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredEnrollments.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-slate-500 dark:text-slate-400 italic">
+                    No students currently enrolled in this course roster.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filteredEnrollments.map((student, idx) => (
+                  <tr key={student.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="p-3 font-mono text-slate-400 text-[11px] text-center">{idx + 1}</td>
+                    <td className="p-3 font-semibold text-slate-900 dark:text-white">{student.studentName}</td>
+                    <td className="p-3 font-mono text-slate-700 dark:text-slate-300 font-medium">{student.studentRollNo}</td>
+                    <td className="p-3 font-mono text-slate-500 dark:text-slate-400">{student.studentEmail}</td>
+                    <td className="p-3 font-mono text-slate-500 dark:text-slate-400">{formatDate(student.enrolledAt)}</td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Remove ${student.studentName} (${student.studentRollNo}) from this course?`)) {
+                            removeStudentFromCourse(selectedCourseId, student.studentUid);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                        title="Remove from course roster"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Manual Add Student Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/50 backdrop-blur-sm">
-          <div className="bg-surface rounded-xl border border-warm-300 shadow-elevated w-full max-w-md p-6 space-y-4">
-            <div className="border-b border-warm-200 pb-3">
-              <h3 className="text-base font-bold text-navy-900">Manually Enroll Student</h3>
-              <p className="text-xs text-navy-500">Directly add an existing student to the course roster.</p>
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setIsAddModalOpen(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Manually Register Student</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Enrolling into <strong className="text-slate-900 dark:text-white">{selectedCourse?.courseCode}</strong>
+                </p>
+              </div>
+              <button 
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            <form onSubmit={handleManualAdd} className="space-y-3">
+            <form onSubmit={handleManualAdd} className="space-y-3.5">
               <div>
-                <label className="text-xs font-semibold text-navy-700 block mb-1">Student Full Name</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Student Full Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Diya Sharma"
                   value={studentName}
                   onChange={e => setStudentName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-blue-600"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-navy-700 block mb-1">Student Roll Number</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Student Roll Number</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. 22CS018"
                   value={studentRollNo}
                   onChange={e => setStudentRollNo(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs font-mono uppercase focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs font-mono uppercase focus:outline-none focus:border-blue-600"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-navy-700 block mb-1">College Email Address</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Institutional Email Address</label>
                 <input
                   type="email"
                   required
                   placeholder="e.g. diya.s@college.edu"
                   value={studentEmail}
                   onChange={e => setStudentEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs focus:outline-none focus:border-primary"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-blue-600"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-warm-200">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-md text-xs font-medium text-navy-700 hover:bg-warm-100"
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-md text-xs font-semibold bg-primary hover:bg-primary-hover text-white shadow-subtle"
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm disabled:opacity-50 transition-colors"
                 >
-                  Add Student
+                  {submitting ? 'Enrolling...' : 'Confirm Enrollment'}
                 </button>
               </div>
             </form>
@@ -216,4 +295,3 @@ export const ManageStudents: React.FC = () => {
     </div>
   );
 };
-

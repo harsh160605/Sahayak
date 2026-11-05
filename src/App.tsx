@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { TeacherDashboard } from './pages/TeacherDashboard';
@@ -35,18 +36,25 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: 'teach
   return <>{children}</>;
 };
 
+const RootRedirect: React.FC = () => {
+  const { currentUser } = useAuth();
+  if (!currentUser) return <Navigate to="/login" replace />;
+  return <Navigate to={currentUser.role === 'student' ? '/student' : '/teacher'} replace />;
+};
+
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <DataProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+    <ThemeProvider>
+      <AuthProvider>
+        <DataProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            {/* Main Application Shell */}
-            <Route element={<Layout />}>
-              {/* Default Redirect */}
-              <Route path="/" element={<Navigate to="/teacher" replace />} />
+              {/* Main Application Shell */}
+              <Route element={<Layout />}>
+              {/* Default Dynamic Redirect based on role */}
+              <Route path="/" element={<RootRedirect />} />
 
               {/* Teacher Routes */}
               <Route path="/teacher" element={
@@ -138,8 +146,8 @@ export const App: React.FC = () => {
         </BrowserRouter>
       </DataProvider>
     </AuthProvider>
-  );
+  </ThemeProvider>
+);
 };
 
 export default App;
-
