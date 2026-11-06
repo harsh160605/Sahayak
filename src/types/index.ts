@@ -1,11 +1,70 @@
-export type UserRole = 'teacher' | 'student';
+export type UserRole = 'teacher' | 'student' | 'admin';
+
+export type YearOfStudy = 'First Year' | 'Second Year' | 'Third Year' | 'Fourth Year';
+
+export interface DepartmentInfo {
+  id: string;
+  name: string;
+  code: string;
+  headOfDepartment?: string;
+}
+
+export interface Department {
+  id: string; // e.g. "dept_comp"
+  organizationId: string;
+  organizationCode?: string;
+  name: string; // e.g. "Computer Engineering"
+  code: string; // e.g. "COMP"
+  hodId?: string; // Faculty UID
+  hodName?: string;
+  hodEmail?: string;
+  createdAt?: string;
+}
+
+export interface Division {
+  id: string; // e.g. "div_comp_te_a"
+  organizationId: string;
+  organizationCode?: string;
+  departmentId: string;
+  departmentCode: string;
+  departmentName: string;
+  yearOfStudy: YearOfStudy; // e.g. "Third Year"
+  name: string; // e.g. "Division A"
+  academicYear: string; // e.g. "2026–27"
+  classTeacherId?: string;
+  classTeacherName?: string;
+  classTeacherEmail?: string;
+  roomNumber?: string;
+  capacity?: number;
+  enrolledCount?: number;
+  studentCount?: number;
+  createdAt?: string;
+}
+
+export interface SubjectAllocation {
+  id: string;
+  divisionId: string;
+  divisionName?: string;
+  courseId: string;
+  courseCode: string;
+  courseName: string;
+  teacherId: string;
+  teacherName: string;
+  weeklyHours?: number;
+}
 
 export interface Organization {
-  id: string; // e.g. "org_mit_pune"
-  code: string; // e.g. "SA-7821" or "MIT2024" (unique uppercase join code)
-  name: string; // e.g. "Apex Institute of Technology"
+  id: string; // e.g. "org_tcoer25"
+  code: string; // e.g. "TCOER25" or "APEX101" (unique uppercase join code)
+  name: string; // e.g. "Trinity College Of Engineering And Research"
   city?: string;
+  address?: string;
+  contactPhone?: string;
   adminEmail: string;
+  adminName?: string;
+  currentAcademicYear?: string; // e.g. "2026–27"
+  departments?: string[]; // list of department names for legacy compatibility
+  onboardingCompleted?: boolean;
   createdAt: string;
 }
 
@@ -20,6 +79,14 @@ export interface UserProfile {
   studentId?: string; // Roll number for students
   facultyId?: string; // ID for teachers
   department: string;
+  departmentId?: string;
+  yearOfStudy?: YearOfStudy; // e.g. "Third Year"
+  divisionId?: string; // Division mapping
+  divisionName?: string; // e.g. "Division A"
+  rollNo?: string; // e.g. "42" or "22CS042"
+  isHOD?: boolean;
+  isClassTeacher?: boolean;
+  phone?: string;
   semester?: string;
   academicYear?: string;
   avatarUrl?: string;
@@ -34,6 +101,10 @@ export interface Course {
   courseCode: string;
   courseName: string;
   department: string;
+  departmentId?: string;
+  yearOfStudy?: YearOfStudy;
+  divisionId?: string;
+  divisionName?: string;
   semester: string;
   academicYear: string;
   teacherId: string;
@@ -126,19 +197,37 @@ export interface AttendanceRecord {
 
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
 
+export type SessionType = 'lecture' | 'practical' | 'break';
+
+export interface DayScheduleConfig {
+  dayOfWeek: DayOfWeek;
+  isWorkingDay: boolean;
+  holidayReason?: string;
+}
+
 export interface TimetableSlot {
   id: string;
   organizationId?: string;
   organizationCode?: string;
-  courseId: string;
-  courseCode: string;
-  courseName: string;
-  teacherId: string;
-  teacherName: string;
+  courseId?: string;
+  courseCode?: string;
+  courseName?: string;
+  teacherId?: string;
+  teacherName?: string;
+  additionalTeacherIds?: string[]; // for practicals with multiple lab teachers
+  additionalTeacherNames?: string[];
   dayOfWeek: DayOfWeek;
-  startTime: string; // e.g. "09:00"
-  endTime: string;   // e.g. "10:00"
-  room: string;      // e.g. "Hall 302" or "Lab 4"
-  semester: string;
+  sessionType: SessionType;
+  startTime: string; // e.g. "09:15"
+  endTime: string;   // e.g. "10:15"
+  room?: string;      // e.g. "Hall 302" or "Lab 4"
+  semester?: string;
   department: string;
+  departmentId?: string;
+  divisionId?: string;
+  divisionName?: string;
+  yearOfStudy?: YearOfStudy;
+  academicYear?: string;
+  status?: 'draft' | 'published';
+  notes?: string;
 }

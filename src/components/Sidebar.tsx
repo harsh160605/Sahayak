@@ -18,6 +18,14 @@ import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useData } from '../context/DataContext';
 
+interface NavItem {
+  label: string;
+  to: string;
+  icon: any;
+  highlight?: boolean;
+  badge?: number;
+}
+
 export const Sidebar: React.FC = () => {
   const { currentUser, logout, switchUserRole } = useAuth();
   const { requests } = useData();
@@ -25,9 +33,20 @@ export const Sidebar: React.FC = () => {
   if (!currentUser) return null;
 
   const isTeacher = currentUser.role === 'teacher';
+  const isAdmin = currentUser.role === 'admin';
   const pendingRequestsCount = requests.filter(r => r.teacherId === currentUser.uid && r.status === 'pending').length;
 
-  const teacherNavItems = [
+  const adminNavItems: NavItem[] = [
+    { label: 'Admin Console', to: '/admin', icon: LayoutDashboard },
+    { label: 'Institute Roster', to: '/institute-directory', icon: Users },
+    { label: 'Master Timetable', to: '/admin/timetable', icon: Calendar },
+    { label: 'Course Catalog', to: '/teacher/courses', icon: BookOpen },
+    { label: 'Take Attendance', to: '/teacher/take-attendance', icon: QrCode },
+    { label: 'Attendance Reports', to: '/teacher/reports', icon: BarChart3 },
+    { label: 'Profile', to: '/profile', icon: User },
+  ];
+
+  const teacherNavItems: NavItem[] = [
     { label: 'Dashboard', to: '/teacher', icon: LayoutDashboard },
     { label: 'My Courses', to: '/teacher/courses', icon: BookOpen },
     { label: 'Class Timetable', to: '/teacher/timetable', icon: Calendar },
@@ -41,20 +60,22 @@ export const Sidebar: React.FC = () => {
       icon: UserCheck, 
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined 
     },
+    { label: 'Institute Directory', to: '/institute-directory', icon: Users },
     { label: 'Profile', to: '/profile', icon: User },
   ];
 
-  const studentNavItems = [
+  const studentNavItems: NavItem[] = [
     { label: 'Dashboard', to: '/student', icon: LayoutDashboard },
     { label: 'Class Timetable', to: '/student/timetable', icon: Calendar },
     { label: 'My Courses', to: '/student/courses', icon: BookOpen },
     { label: 'Scan QR Attendance', to: '/student/scan', icon: QrCode, highlight: true },
     { label: 'Attendance History', to: '/student/history', icon: History },
     { label: 'Join a Course', to: '/student/join', icon: GraduationCap },
+    { label: 'Institute Directory', to: '/institute-directory', icon: Users },
     { label: 'Profile', to: '/profile', icon: User },
   ];
 
-  const navItems = isTeacher ? teacherNavItems : studentNavItems;
+  const navItems: NavItem[] = isAdmin ? adminNavItems : isTeacher ? teacherNavItems : studentNavItems;
 
   return (
     <aside className="w-64 bg-surface border-r border-warm-300 min-h-screen flex flex-col justify-between shrink-0 select-none">
@@ -68,8 +89,14 @@ export const Sidebar: React.FC = () => {
             <div>
               <span className="font-semibold text-navy-900 tracking-tight text-base flex items-center gap-1.5">
                 SmartAttend
-                <span className="text-[10px] font-mono tracking-widest font-medium uppercase px-1.5 py-0.5 rounded bg-warm-200 text-navy-700 border border-warm-300">
-                  {isTeacher ? 'FACULTY' : 'STUDENT'}
+                <span className={`text-[10px] font-mono tracking-widest font-medium uppercase px-1.5 py-0.5 rounded border ${
+                  isAdmin 
+                    ? 'bg-amber-100 text-amber-900 border-amber-300' 
+                    : isTeacher 
+                      ? 'bg-warm-200 text-navy-700 border-warm-300' 
+                      : 'bg-teal-100 text-teal-800 border-teal-300'
+                }`}>
+                  {isAdmin ? 'ADMIN' : isTeacher ? 'FACULTY' : 'STUDENT'}
                 </span>
               </span>
               <p className="text-[11px] text-navy-500 font-mono truncate max-w-[130px]">

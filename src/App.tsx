@@ -17,8 +17,12 @@ import { AttendanceReports } from './pages/teacher/AttendanceReports';
 import { JoinCourse } from './pages/student/JoinCourse';
 import { Profile } from './pages/Profile';
 import { TimetableSchedule } from './pages/TimetableSchedule';
+import { InstituteDirectory } from './pages/InstituteDirectory';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { InstituteOnboardingWizard } from './pages/onboarding/InstituteOnboardingWizard';
+import { UserRole } from './types';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: 'teacher' | 'student' }> = ({ 
+const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: UserRole }> = ({ 
   children, 
   allowedRole 
 }) => {
@@ -28,11 +32,27 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: 'teach
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRole && currentUser.role !== allowedRole) {
-    return <Navigate to={currentUser.role === 'teacher' ? '/teacher' : '/student'} replace />;
+  if (allowedRole) {
+    if (allowedRole === 'admin' && currentUser.role !== 'admin') {
+      return <Navigate to={currentUser.role === 'teacher' ? '/teacher' : '/student'} replace />;
+    }
+    if (allowedRole === 'teacher' && currentUser.role !== 'teacher' && currentUser.role !== 'admin') {
+      return <Navigate to="/student" replace />;
+    }
+    if (allowedRole === 'student' && currentUser.role !== 'student') {
+      return <Navigate to={currentUser.role === 'admin' ? '/admin' : '/teacher'} replace />;
+    }
   }
 
   return <>{children}</>;
+};
+
+const DefaultRedirect: React.FC = () => {
+  const { currentUser } = useAuth();
+  if (!currentUser) return <Navigate to="/login" replace />;
+  if (currentUser.role === 'admin') return <Navigate to="/admin" replace />;
+  if (currentUser.role === 'teacher') return <Navigate to="/teacher" replace />;
+  return <Navigate to="/student" replace />;
 };
 
 export const App: React.FC = () => {
@@ -42,11 +62,31 @@ export const App: React.FC = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/onboarding" element={<InstituteOnboardingWizard />} />
 
             {/* Main Application Shell */}
             <Route element={<Layout />}>
-              {/* Default Redirect */}
-              <Route path="/" element={<Navigate to="/teacher" replace />} />
+              {/* Default Dynamic Redirect */}
+              <Route path="/" element={<DefaultRedirect />} />
+
+              {/* Admin Routes */}
+              <Route path="/admin" element={
+                <ProtectedRoute allowedRole="admin">
+                  <AdminDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/timetable" element={
+                <ProtectedRoute allowedRole="admin">
+                  <TimetableSchedule />
+                </ProtectedRoute>
+              } />
+
+              {/* Institute Directory (Shared across all members) */}
+              <Route path="/institute-directory" element={
+                <ProtectedRoute>
+                  <InstituteDirectory />
+                </ProtectedRoute>
+              } />
 
               {/* Teacher Routes */}
               <Route path="/teacher" element={

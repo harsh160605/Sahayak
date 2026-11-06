@@ -6,44 +6,46 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // 1. Users Profile Collection (Allows profile creation on signup)
+    // 1. Users Profile Collection
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
     // 2. Courses Collection
     match /courses/{courseId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
     // 3. Enrollments Collection
     match /enrollments/{enrollmentId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
     // 4. Enrollment Requests Collection
     match /enrollmentRequests/{requestId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
-    // 5. Attendance Sessions Collection (Real-time live QR codes)
+    // 5. Attendance Sessions Collection
     match /attendanceSessions/{sessionId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
-    // 6. Attendance Records Collection (Attendance verification & submissions)
+    // 6. Attendance Records Collection
     match /attendanceRecords/{recordId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
-    // 7. Timetable Schedule Collection (Department master timetable)
+    // 7. Timetable Schedule Collection
     match /timetable/{slotId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
-    // 8. Organizations Collection (Institutes, colleges & join code verification)
+    // 8. Organizations Collection
+    // Read is allowed so students & faculty can verify organization codes before registration
     match /organizations/{orgId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
   }
 }

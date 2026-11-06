@@ -4,9 +4,16 @@ import {
   CourseEnrollment, 
   EnrollmentRequest, 
   AttendanceSession, 
-  AttendanceRecord,
-  TimetableSlot,
-  GeoLocationConfig
+  AttendanceRecord, 
+  TimetableSlot, 
+  GeoLocationConfig,
+  UserProfile,
+  Department,
+  Division,
+  SubjectAllocation,
+  YearOfStudy,
+  Organization,
+  DayOfWeek
 } from '../types';
 import { 
   INITIAL_COURSES, 
@@ -14,7 +21,11 @@ import {
   INITIAL_REQUESTS, 
   INITIAL_SESSIONS, 
   INITIAL_ATTENDANCE_RECORDS,
-  INITIAL_TIMETABLE
+  INITIAL_TIMETABLE,
+  INITIAL_DEPARTMENTS,
+  INITIAL_DIVISIONS,
+  INITIAL_SUBJECT_ALLOCATIONS,
+  INITIAL_ORGANIZATION_USERS
 } from '../data/initialData';
 import { 
   collection, 
@@ -27,7 +38,7 @@ import {
 } from 'firebase/firestore';
 import { db, isLiveFirebaseConfigured } from '../config/firebase';
 import { calculateDistanceMeters } from '../lib/utils';
-import { useAuth } from './AuthContext';
+import { useAuth, DEMO_ADMIN, DEMO_TEACHER, DEMO_STUDENT } from './AuthContext';
 
 interface DataContextType {
   courses: Course[];
@@ -36,7 +47,32 @@ interface DataContextType {
   sessions: AttendanceSession[];
   attendanceRecords: AttendanceRecord[];
   timetable: TimetableSlot[];
+  organizationUsers: UserProfile[];
+  departments: Department[];
+  divisions: Division[];
+  subjectAllocations: SubjectAllocation[];
   
+  // Academic Hierarchy CRUD
+  addDepartmentHierarchy: (dept: Omit<Department, 'id'>) => Promise<Department>;
+  updateDepartmentHierarchy: (id: string, updates: Partial<Department>) => Promise<void>;
+  deleteDepartmentHierarchy: (id: string) => Promise<void>;
+  
+  addDivision: (div: Omit<Division, 'id'>) => Promise<Division>;
+  updateDivision: (id: string, updates: Partial<Division>) => Promise<void>;
+  deleteDivision: (id: string) => Promise<void>;
+  
+  allocateSubjectToDivision: (alloc: Omit<SubjectAllocation, 'id'>) => Promise<SubjectAllocation>;
+  bulkAddStudentsToDivision: (divisionId: string, students: Array<{ fullName: string; email: string; rollNo: string; yearOfStudy?: YearOfStudy }>) => Promise<{ addedCount: number; message: string }>;
+  bulkAddFacultyToDepartment: (departmentId: string, facultyList: Array<{ fullName: string; email: string; facultyId: string; role?: 'teacher' | 'admin' }>) => Promise<{ addedCount: number; message: string }>;
+  
+  completeInstituteOnboarding: (onboardingData: {
+    institute: Partial<Organization>;
+    departments: Array<{ name: string; code: string; hodName?: string; hodEmail?: string }>;
+    divisions: Array<{ departmentCode: string; yearOfStudy: YearOfStudy; name: string; classTeacherName?: string; roomNumber?: string }>;
+    faculty: Array<{ fullName: string; email: string; facultyId: string; departmentCode: string }>;
+    students: Array<{ fullName: string; email: string; rollNo: string; departmentCode: string; yearOfStudy: YearOfStudy; divisionName: string }>;
+  }) => Promise<void>;
+
   // Course actions
   addCourse: (course: Omit<Course, 'id' | 'createdAt' | 'status' | 'enrolledCount'>) => Promise<Course>;
   updateCourse: (id: string, updates: Partial<Course>) => Promise<void>;
@@ -70,14 +106,38 @@ interface DataContextType {
     studentCoords?: { latitude: number; longitude: number }
   ) => Promise<{ success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string; distanceMeters?: number }>;
   
-  // Timetable Actions
+  // Intelligent Timetable Actions
   addTimetableSlot: (slot: Omit<TimetableSlot, 'id'>) => Promise<TimetableSlot>;
+  updateTimetableSlot: (slotId: string, updates: Partial<TimetableSlot>) => Promise<void>;
   saveWeeklyScheduleBatch: (slots: Omit<TimetableSlot, 'id'>[]) => Promise<void>;
   deleteTimetableSlot: (slotId: string) => Promise<void>;
   clearDepartmentSchedule: (department: string, semester: string) => Promise<void>;
+  clearDivisionTimetable: (divisionId: string, day?: DayOfWeek) => Promise<void>;
+  publishDivisionTimetable: (divisionId: string) => Promise<void>;
+  unpublishDivisionTimetable: (divisionId: string) => Promise<void>;
+  copyDayTimetable: (fromDay: DayOfWeek, toDay: DayOfWeek, divisionId: string) => Promise<number>;
+  copyDivisionTimetable: (fromDivisionId: string, toDivisionId: string) => Promise<number>;
+  checkFacultyAvailability: (
+    teacherId: string, 
+    day: DayOfWeek, 
+    startTime: string, 
+    endTime: string, 
+    currentSlotId?: string
+  ) => { available: boolean; conflictReason?: string };
+  validateTimetableConflicts: (
+    slots: TimetableSlot[]
+  ) => { hasConflicts: boolean; errors: string[] };
+  dayConfigs: Record<string, { isWorkingDay: boolean; holidayReason?: string }>;
+  setDayConfig: (divisionId: string, day: DayOfWeek, isWorkingDay: boolean, holidayReason?: string) => Promise<void>;
 
   // Correction & manual overrides
   updateAttendanceStatus: (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => Promise<void>;
+
+  // Admin Department & Faculty Management
+  addDepartment: (deptName: string) => Promise<void>;
+  removeDepartment: (deptName: string) => Promise<void>;
+  assignFacultyDepartment: (facultyUid: string, department: string) => Promise<void>;
+  removeFaculty: (facultyUid: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -87,52 +147,127 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const currentOrgId = currentUser?.organizationId || 'org_apex_tech';
 
   const [courses, setCourses] = useState<Course[]>(() => {
-    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_courses');
-    return saved ? JSON.parse(saved) : INITIAL_COURSES;
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_COURSES;
   });
 
   const [enrollments, setEnrollments] = useState<CourseEnrollment[]>(() => {
-    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_enrollments');
-    return saved ? JSON.parse(saved) : INITIAL_ENROLLMENTS;
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_ENROLLMENTS;
   });
 
   const [requests, setRequests] = useState<EnrollmentRequest[]>(() => {
-    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_requests');
-    return saved ? JSON.parse(saved) : INITIAL_REQUESTS;
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_REQUESTS;
   });
 
   const [sessions, setSessions] = useState<AttendanceSession[]>(() => {
-    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_sessions');
-    return saved ? JSON.parse(saved) : INITIAL_SESSIONS;
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_SESSIONS;
   });
 
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => {
-    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_attendance_records');
-    return saved ? JSON.parse(saved) : INITIAL_ATTENDANCE_RECORDS;
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_ATTENDANCE_RECORDS;
   });
 
   const [timetable, setTimetable] = useState<TimetableSlot[]>(() => {
-    if (isLiveFirebaseConfigured) return [];
     const saved = localStorage.getItem('smartattend_timetable');
-    return saved ? JSON.parse(saved) : INITIAL_TIMETABLE;
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved);
+        if (parsed.length >= 8) return parsed;
+      } catch {}
+    }
+    return INITIAL_TIMETABLE;
   });
+
+  const [organizationUsers, setOrganizationUsers] = useState<UserProfile[]>(() => {
+    const saved = localStorage.getItem('smartattend_all_users');
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved);
+        if (parsed.length >= 5) return parsed;
+      } catch {}
+    }
+    return INITIAL_ORGANIZATION_USERS;
+  });
+
+  const [departments, setDepartments] = useState<Department[]>(() => {
+    const saved = localStorage.getItem('smartattend_departments');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_DEPARTMENTS;
+  });
+
+  const [divisions, setDivisions] = useState<Division[]>(() => {
+    const saved = localStorage.getItem('smartattend_divisions');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_DIVISIONS;
+  });
+
+  const [subjectAllocations, setSubjectAllocations] = useState<SubjectAllocation[]>(() => {
+    const saved = localStorage.getItem('smartattend_subject_allocations');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return INITIAL_SUBJECT_ALLOCATIONS;
+  });
+
+  const [dayConfigs, setDayConfigs] = useState<Record<string, { isWorkingDay: boolean; holidayReason?: string }>>(() => {
+    const saved = localStorage.getItem('smartattend_day_configs');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return {
+      'div_comp_te_a_Sunday': { isWorkingDay: false, holidayReason: 'Weekly Off' }
+    };
+  });
+
+  const setDayConfig = async (divisionId: string, day: DayOfWeek, isWorkingDay: boolean, holidayReason?: string) => {
+    const key = `${divisionId}_${day}`;
+    setDayConfigs(prev => {
+      const next = { ...prev, [key]: { isWorkingDay, holidayReason } };
+      localStorage.setItem('smartattend_day_configs', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Always keep localStorage updated
+  useEffect(() => {
+    localStorage.setItem('smartattend_courses', JSON.stringify(courses));
+    localStorage.setItem('smartattend_enrollments', JSON.stringify(enrollments));
+    localStorage.setItem('smartattend_requests', JSON.stringify(requests));
+    localStorage.setItem('smartattend_sessions', JSON.stringify(sessions));
+    localStorage.setItem('smartattend_attendance_records', JSON.stringify(attendanceRecords));
+    localStorage.setItem('smartattend_timetable', JSON.stringify(timetable));
+    localStorage.setItem('smartattend_all_users', JSON.stringify(organizationUsers));
+    localStorage.setItem('smartattend_departments', JSON.stringify(departments));
+    localStorage.setItem('smartattend_divisions', JSON.stringify(divisions));
+    localStorage.setItem('smartattend_subject_allocations', JSON.stringify(subjectAllocations));
+  }, [courses, enrollments, requests, sessions, attendanceRecords, timetable, organizationUsers, departments, divisions, subjectAllocations]);
 
   // Real-time Firestore Sync Listeners
   useEffect(() => {
-    if (!isLiveFirebaseConfigured) {
-      localStorage.setItem('smartattend_courses', JSON.stringify(courses));
-      localStorage.setItem('smartattend_enrollments', JSON.stringify(enrollments));
-      localStorage.setItem('smartattend_requests', JSON.stringify(requests));
-      localStorage.setItem('smartattend_sessions', JSON.stringify(sessions));
-      localStorage.setItem('smartattend_attendance_records', JSON.stringify(attendanceRecords));
-      localStorage.setItem('smartattend_timetable', JSON.stringify(timetable));
-      return;
-    }
+    if (!isLiveFirebaseConfigured) return;
 
     // 1. Courses
     const unsubCourses = onSnapshot(collection(db, 'courses'), (snapshot) => {
@@ -140,9 +275,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
-      items.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      setCourses(items);
-    });
+      if (items.length > 0) {
+        items.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setCourses(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Courses sync notice:', err));
 
     // 2. Enrollments
     const unsubEnrollments = onSnapshot(collection(db, 'enrollments'), (snapshot) => {
@@ -150,8 +291,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
-      setEnrollments(items);
-    });
+      if (items.length > 0) {
+        setEnrollments(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Enrollments sync notice:', err));
 
     // 3. Requests
     const unsubRequests = onSnapshot(collection(db, 'enrollmentRequests'), (snapshot) => {
@@ -159,9 +306,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
-      items.sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
-      setRequests(items);
-    });
+      if (items.length > 0) {
+        items.sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
+        setRequests(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Requests sync notice:', err));
 
     // 4. Sessions
     const unsubSessions = onSnapshot(collection(db, 'attendanceSessions'), (snapshot) => {
@@ -169,9 +322,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
-      items.sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime());
-      setSessions(items);
-    });
+      if (items.length > 0) {
+        items.sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime());
+        setSessions(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Sessions sync notice:', err));
 
     // 5. Attendance Records
     const unsubAttendance = onSnapshot(collection(db, 'attendanceRecords'), (snapshot) => {
@@ -179,9 +338,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
-      items.sort((a, b) => new Date(b.markedAt || 0).getTime() - new Date(a.markedAt || 0).getTime());
-      setAttendanceRecords(items);
-    });
+      if (items.length > 0) {
+        items.sort((a, b) => new Date(b.markedAt || 0).getTime() - new Date(a.markedAt || 0).getTime());
+        setAttendanceRecords(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Attendance sync notice:', err));
 
     // 6. Timetable Slots
     const unsubTimetable = onSnapshot(collection(db, 'timetable'), (snapshot) => {
@@ -189,8 +354,74 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       snapshot.forEach((docSnap) => {
         items.push({ id: docSnap.id, ...(docSnap.data() as any) });
       });
-      setTimetable(items);
-    });
+      if (items.length > 0) {
+        setTimetable(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Timetable sync notice:', err));
+
+    // 7. Users Directory
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const items: UserProfile[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ uid: docSnap.id, ...(docSnap.data() as any) });
+      });
+      if (items.length > 0) {
+        setOrganizationUsers(prev => {
+          const ids = new Set(items.map(i => i.uid));
+          const localOnly = prev.filter(p => !ids.has(p.uid));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Users directory sync notice:', err));
+
+    // 8. Departments
+    const unsubDepartments = onSnapshot(collection(db, 'departments'), (snapshot) => {
+      const items: Department[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      if (items.length > 0) {
+        setDepartments(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Departments sync notice:', err));
+
+    // 9. Divisions
+    const unsubDivisions = onSnapshot(collection(db, 'divisions'), (snapshot) => {
+      const items: Division[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      if (items.length > 0) {
+        setDivisions(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Divisions sync notice:', err));
+
+    // 10. Subject Allocations
+    const unsubAllocations = onSnapshot(collection(db, 'subjectAllocations'), (snapshot) => {
+      const items: SubjectAllocation[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      if (items.length > 0) {
+        setSubjectAllocations(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Subject allocations sync notice:', err));
 
     return () => {
       unsubCourses();
@@ -199,6 +430,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubSessions();
       unsubAttendance();
       unsubTimetable();
+      unsubUsers();
+      unsubDepartments();
+      unsubDivisions();
+      unsubAllocations();
     };
   }, [isLiveFirebaseConfigured]);
 
@@ -215,11 +450,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       organizationCode: data.organizationCode || currentUser?.organizationCode || 'APEX101'
     };
 
-    if (isLiveFirebaseConfigured) {
-      await setDoc(doc(db, 'courses', courseId), newCourse);
-    } else {
-      setCourses(prev => [newCourse, ...prev]);
+    try {
+      if (isLiveFirebaseConfigured) {
+        await setDoc(doc(db, 'courses', courseId), newCourse);
+      }
+    } catch (err) {
+      console.warn('Firestore setDoc notice:', err);
     }
+
+    setCourses(prev => [newCourse, ...prev.filter(c => c.id !== courseId)]);
     return newCourse;
   };
 
@@ -597,7 +836,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Timetable slot management
   const addTimetableSlot = async (slotData: Omit<TimetableSlot, 'id'>) => {
-    const slotId = `slot_${Date.now()}`;
+    const slotId = `slot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newSlot: TimetableSlot = { 
       ...slotData, 
       id: slotId,
@@ -605,49 +844,285 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       organizationCode: slotData.organizationCode || currentUser?.organizationCode || 'APEX101'
     };
 
-    if (isLiveFirebaseConfigured) {
-      await setDoc(doc(db, 'timetable', slotId), newSlot);
-    } else {
-      setTimetable(prev => [...prev, newSlot]);
+    try {
+      if (isLiveFirebaseConfigured) {
+        await setDoc(doc(db, 'timetable', slotId), newSlot);
+      }
+    } catch (err) {
+      console.warn('Firestore timetable setDoc notice:', err);
     }
+
+    setTimetable(prev => [...prev.filter(s => s.id !== slotId), newSlot]);
     return newSlot;
   };
 
   // Bulk save whole week schedule at once
   const saveWeeklyScheduleBatch = async (slots: Omit<TimetableSlot, 'id'>[]) => {
-    if (isLiveFirebaseConfigured) {
-      const batch = writeBatch(db);
-      const newSlots: TimetableSlot[] = [];
+    const newSlots: TimetableSlot[] = slots.map((s, idx) => ({
+      ...s,
+      id: `slot_${Date.now()}_${idx}`,
+      organizationId: s.organizationId || currentUser?.organizationId || 'org_apex_tech',
+      organizationCode: s.organizationCode || currentUser?.organizationCode || 'APEX101'
+    }));
 
-      for (const slot of slots) {
-        const slotId = `slot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        const fullSlot: TimetableSlot = { 
-          ...slot, 
-          id: slotId,
-          organizationId: slot.organizationId || currentUser?.organizationId || 'org_apex_tech',
-          organizationCode: slot.organizationCode || currentUser?.organizationCode || 'APEX101'
-        };
-        batch.set(doc(db, 'timetable', slotId), fullSlot);
-        newSlots.push(fullSlot);
+    try {
+      if (isLiveFirebaseConfigured) {
+        const batch = writeBatch(db);
+        for (const slot of newSlots) {
+          batch.set(doc(db, 'timetable', slot.id), slot);
+        }
+        await batch.commit();
       }
-      await batch.commit();
-    } else {
-      const newSlots: TimetableSlot[] = slots.map((s, idx) => ({
-        ...s,
-        id: `slot_${Date.now()}_${idx}`,
-        organizationId: s.organizationId || currentUser?.organizationId || 'org_apex_tech',
-        organizationCode: s.organizationCode || currentUser?.organizationCode || 'APEX101'
-      }));
-      setTimetable(prev => [...prev, ...newSlots]);
+    } catch (err) {
+      console.warn('Firestore timetable batch set notice:', err);
     }
+
+    setTimetable(prev => [...prev, ...newSlots]);
+  };
+
+  const updateTimetableSlot = async (slotId: string, updates: Partial<TimetableSlot>) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        await updateDoc(doc(db, 'timetable', slotId), updates);
+      }
+    } catch (err) {
+      console.warn('Firestore timetable updateDoc notice:', err);
+    }
+    setTimetable(prev => prev.map(s => s.id === slotId ? { ...s, ...updates } : s));
   };
 
   const deleteTimetableSlot = async (slotId: string) => {
-    if (isLiveFirebaseConfigured) {
-      await deleteDoc(doc(db, 'timetable', slotId));
-    } else {
-      setTimetable(prev => prev.filter(s => s.id !== slotId));
+    try {
+      if (isLiveFirebaseConfigured) {
+        await deleteDoc(doc(db, 'timetable', slotId));
+      }
+    } catch (err) {
+      console.warn('Firestore timetable deleteDoc notice:', err);
     }
+    setTimetable(prev => prev.filter(s => s.id !== slotId));
+  };
+
+  const clearDivisionTimetable = async (divisionId: string, day?: DayOfWeek) => {
+    if (isLiveFirebaseConfigured) {
+      const batch = writeBatch(db);
+      const toDelete = timetable.filter(s => {
+        if (s.divisionId !== divisionId) return false;
+        if (day && s.dayOfWeek !== day) return false;
+        return true;
+      });
+      toDelete.forEach(s => batch.delete(doc(db, 'timetable', s.id)));
+      await batch.commit();
+    }
+    setTimetable(prev => prev.filter(s => {
+      if (s.divisionId !== divisionId) return true;
+      if (day && s.dayOfWeek !== day) return true;
+      return false;
+    }));
+  };
+
+  const publishDivisionTimetable = async (divisionId: string) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        const batch = writeBatch(db);
+        const toPublish = timetable.filter(s => s.divisionId === divisionId);
+        toPublish.forEach(s => batch.update(doc(db, 'timetable', s.id), { status: 'published' }));
+        if (toPublish.length > 0) {
+          await batch.commit();
+        }
+      }
+    } catch (err) {
+      console.warn('Firestore publishDivisionTimetable notice:', err);
+    }
+    setTimetable(prev => prev.map(s => s.divisionId === divisionId ? { ...s, status: 'published' as const } : s));
+  };
+
+  const unpublishDivisionTimetable = async (divisionId: string) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        const batch = writeBatch(db);
+        const toUnpublish = timetable.filter(s => s.divisionId === divisionId);
+        toUnpublish.forEach(s => batch.update(doc(db, 'timetable', s.id), { status: 'draft' }));
+        if (toUnpublish.length > 0) {
+          await batch.commit();
+        }
+      }
+    } catch (err) {
+      console.warn('Firestore unpublishDivisionTimetable notice:', err);
+    }
+    setTimetable(prev => prev.map(s => s.divisionId === divisionId ? { ...s, status: 'draft' as const } : s));
+  };
+
+  const copyDayTimetable = async (fromDay: DayOfWeek, toDay: DayOfWeek, divisionId: string): Promise<number> => {
+    const sourceSlots = timetable.filter(s => s.divisionId === divisionId && s.dayOfWeek === fromDay);
+    if (sourceSlots.length === 0) return 0;
+
+    // Filter out existing slots on destination day
+    const cleanExisting = timetable.filter(s => !(s.divisionId === divisionId && s.dayOfWeek === toDay));
+
+    const copiedSlots: TimetableSlot[] = sourceSlots.map((s, idx) => ({
+      ...s,
+      id: `slot_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+      dayOfWeek: toDay,
+      status: 'draft'
+    }));
+
+    try {
+      if (isLiveFirebaseConfigured) {
+        const batch = writeBatch(db);
+        const oldDest = timetable.filter(s => s.divisionId === divisionId && s.dayOfWeek === toDay);
+        oldDest.forEach(s => batch.delete(doc(db, 'timetable', s.id)));
+        copiedSlots.forEach(s => batch.set(doc(db, 'timetable', s.id), s));
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn('Firestore copyDayTimetable notice:', err);
+    }
+
+    setTimetable([...cleanExisting, ...copiedSlots]);
+    return copiedSlots.length;
+  };
+
+  const copyDivisionTimetable = async (fromDivisionId: string, toDivisionId: string): Promise<number> => {
+    const targetDivision = divisions.find(d => d.id === toDivisionId);
+    if (!targetDivision) return 0;
+
+    const sourceSlots = timetable.filter(s => s.divisionId === fromDivisionId);
+    if (sourceSlots.length === 0) return 0;
+
+    const cleanExisting = timetable.filter(s => s.divisionId !== toDivisionId);
+
+    const copiedSlots: TimetableSlot[] = sourceSlots.map((s, idx) => ({
+      ...s,
+      id: `slot_${Date.now()}_div_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+      divisionId: toDivisionId,
+      divisionName: targetDivision.name,
+      departmentId: targetDivision.departmentId,
+      department: targetDivision.departmentName,
+      yearOfStudy: targetDivision.yearOfStudy,
+      status: 'draft'
+    }));
+
+    try {
+      if (isLiveFirebaseConfigured) {
+        const batch = writeBatch(db);
+        const oldDest = timetable.filter(s => s.divisionId === toDivisionId);
+        oldDest.forEach(s => batch.delete(doc(db, 'timetable', s.id)));
+        copiedSlots.forEach(s => batch.set(doc(db, 'timetable', s.id), s));
+        await batch.commit();
+      }
+    } catch (err) {
+      console.warn('Firestore copyDivisionTimetable notice:', err);
+    }
+
+    setTimetable([...cleanExisting, ...copiedSlots]);
+    return copiedSlots.length;
+  };
+
+  // Smart Faculty Availability Check across entire institute
+  const isTimeOverlapping = (startA: string, endA: string, startB: string, endB: string): boolean => {
+    return startA < endB && endA > startB;
+  };
+
+  const checkFacultyAvailability = (
+    teacherId: string, 
+    day: DayOfWeek, 
+    startTime: string, 
+    endTime: string, 
+    currentSlotId?: string
+  ): { available: boolean; conflictReason?: string } => {
+    if (!teacherId || !startTime || !endTime) return { available: true };
+
+    for (const slot of timetable) {
+      if (currentSlotId && slot.id === currentSlotId) continue;
+      if (slot.dayOfWeek !== day) continue;
+      if (slot.sessionType === 'break') continue;
+
+      if (isTimeOverlapping(startTime, endTime, slot.startTime, slot.endTime)) {
+        const isPrimary = slot.teacherId === teacherId;
+        const isAdditional = slot.additionalTeacherIds?.includes(teacherId);
+
+        if (isPrimary || isAdditional) {
+          const divInfo = slot.divisionName ? `${slot.yearOfStudy ? slot.yearOfStudy + ' ' : ''}${slot.divisionName}` : (slot.department || 'another class');
+          const role = isPrimary ? 'Teaching' : 'Assisting in';
+          const reason = `${role} ${slot.courseCode || 'Lecture'} (${slot.startTime}–${slot.endTime}) in ${divInfo} [${slot.room || 'Room'}]`;
+          return { available: false, conflictReason: reason };
+        }
+      }
+    }
+
+    return { available: true };
+  };
+
+  // Comprehensive Timetable Conflict Validation
+  const validateTimetableConflicts = (
+    slots: TimetableSlot[]
+  ): { hasConflicts: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    // 1. Validate time boundaries
+    for (const s of slots) {
+      if (s.startTime >= s.endTime) {
+        errors.push(`Invalid slot on ${s.dayOfWeek}: Start time (${s.startTime}) must be strictly earlier than end time (${s.endTime}).`);
+      }
+    }
+
+    // 2. Division internal overlaps
+    for (let i = 0; i < slots.length; i++) {
+      for (let j = i + 1; j < slots.length; j++) {
+        const a = slots[i];
+        const b = slots[j];
+
+        if (a.dayOfWeek === b.dayOfWeek && a.divisionId === b.divisionId) {
+          if (isTimeOverlapping(a.startTime, a.endTime, b.startTime, b.endTime)) {
+            const descA = a.sessionType === 'break' ? `Break (${a.notes || 'Break'})` : `${a.courseCode || 'Session'} (${a.startTime}–${a.endTime})`;
+            const descB = b.sessionType === 'break' ? `Break (${b.notes || 'Break'})` : `${b.courseCode || 'Session'} (${b.startTime}–${b.endTime})`;
+            errors.push(`Overlap in ${a.divisionName || 'Division'} on ${a.dayOfWeek}: ${descA} clashes with ${descB}.`);
+          }
+        }
+      }
+    }
+
+    // 3. Faculty and Room availability across entire institute
+    for (const s of slots) {
+      if (s.sessionType === 'break') continue;
+
+      if (s.teacherId) {
+        const check = checkFacultyAvailability(s.teacherId, s.dayOfWeek, s.startTime, s.endTime, s.id);
+        if (!check.available) {
+          errors.push(`Faculty Clashing: ${s.teacherName} is unavailable on ${s.dayOfWeek} (${s.startTime}–${s.endTime}) &bull; ${check.conflictReason}`);
+        }
+      }
+
+      if (s.additionalTeacherIds && s.additionalTeacherIds.length > 0) {
+        s.additionalTeacherIds.forEach((secId, idx) => {
+          const secName = s.additionalTeacherNames?.[idx] || 'Co-Faculty';
+          const check = checkFacultyAvailability(secId, s.dayOfWeek, s.startTime, s.endTime, s.id);
+          if (!check.available) {
+            errors.push(`Co-Faculty Clashing: ${secName} is unavailable on ${s.dayOfWeek} (${s.startTime}–${s.endTime}) &bull; ${check.conflictReason}`);
+          }
+        });
+      }
+
+      // Room check against OTHER divisions
+      if (s.room && s.room.trim() !== '') {
+        const cleanRoom = s.room.trim().toLowerCase();
+        for (const other of timetable) {
+          if (other.id === s.id) continue;
+          if (other.divisionId === s.divisionId) continue; // Same division internal overlap is handled above
+          if (other.dayOfWeek !== s.dayOfWeek) continue;
+          if (!other.room || other.room.trim().toLowerCase() !== cleanRoom) continue;
+
+          if (isTimeOverlapping(s.startTime, s.endTime, other.startTime, other.endTime)) {
+            errors.push(`Room Clashing: "${s.room}" is already reserved on ${s.dayOfWeek} (${other.startTime}–${other.endTime}) by ${other.divisionName || other.department}.`);
+          }
+        }
+      }
+    }
+
+    return {
+      hasConflicts: errors.length > 0,
+      errors: Array.from(new Set(errors))
+    };
   };
 
   const clearDepartmentSchedule = async (department: string, semester: string) => {
@@ -679,16 +1154,420 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.info(`[AUDIT] Record ${recordId} changed to ${newStatus}. Reason: ${reason}`);
   };
 
+  // Admin Department & Faculty Management
+  const addDepartment = async (deptName: string) => {
+    const cleanDept = deptName.trim();
+    if (!cleanDept) return;
+    try {
+      const currentOrgData = localStorage.getItem('smartattend_current_org');
+      const org = currentOrgData ? JSON.parse(currentOrgData) : null;
+      if (org) {
+        const currentDepts = org.departments || [];
+        if (!currentDepts.includes(cleanDept)) {
+          const updatedDepts = [...currentDepts, cleanDept];
+          const updatedOrg = { ...org, departments: updatedDepts };
+          localStorage.setItem('smartattend_current_org', JSON.stringify(updatedOrg));
+          if (isLiveFirebaseConfigured) {
+            await updateDoc(doc(db, 'organizations', org.id), { departments: updatedDepts });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('addDepartment notice:', e);
+    }
+  };
+
+  const removeDepartment = async (deptName: string) => {
+    try {
+      const currentOrgData = localStorage.getItem('smartattend_current_org');
+      const org = currentOrgData ? JSON.parse(currentOrgData) : null;
+      if (org) {
+        const updatedDepts = (org.departments || []).filter((d: string) => d !== deptName);
+        const updatedOrg = { ...org, departments: updatedDepts };
+        localStorage.setItem('smartattend_current_org', JSON.stringify(updatedOrg));
+        if (isLiveFirebaseConfigured) {
+          await updateDoc(doc(db, 'organizations', org.id), { departments: updatedDepts });
+        }
+      }
+    } catch (e) {
+      console.warn('removeDepartment notice:', e);
+    }
+  };
+
+  const assignFacultyDepartment = async (facultyUid: string, department: string) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        await updateDoc(doc(db, 'users', facultyUid), { department });
+      }
+    } catch (e) {
+      console.warn('assignFacultyDepartment notice:', e);
+    }
+    setOrganizationUsers(prev => prev.map(u => u.uid === facultyUid ? { ...u, department } : u));
+  };
+
+  const removeFaculty = async (facultyUid: string) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        await deleteDoc(doc(db, 'users', facultyUid));
+      }
+    } catch (e) {
+      console.warn('removeFaculty notice:', e);
+    }
+    setOrganizationUsers(prev => prev.filter(u => u.uid !== facultyUid));
+  };
+
+  // Department Hierarchy CRUD
+  const addDepartmentHierarchy = async (data: Omit<Department, 'id'>) => {
+    const deptId = `dept_${data.code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${Date.now()}`;
+    const newDept: Department = {
+      ...data,
+      id: deptId,
+      organizationId: data.organizationId || userOrgId,
+      organizationCode: data.organizationCode || userOrgCode || 'APEX101',
+      createdAt: new Date().toISOString()
+    };
+    try {
+      if (isLiveFirebaseConfigured) {
+        await setDoc(doc(db, 'departments', deptId), newDept);
+      }
+    } catch (e) {
+      console.warn('addDepartmentHierarchy firestore notice:', e);
+    }
+    setDepartments(prev => [newDept, ...prev.filter(d => d.id !== deptId)]);
+    addDepartment(newDept.name);
+    return newDept;
+  };
+
+  const updateDepartmentHierarchy = async (id: string, updates: Partial<Department>) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        await updateDoc(doc(db, 'departments', id), updates);
+      }
+    } catch (e) {
+      console.warn('updateDepartmentHierarchy firestore notice:', e);
+    }
+    setDepartments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+  };
+
+  const deleteDepartmentHierarchy = async (id: string) => {
+    const dept = departments.find(d => d.id === id);
+    try {
+      if (isLiveFirebaseConfigured) {
+        await deleteDoc(doc(db, 'departments', id));
+      }
+    } catch (e) {
+      console.warn('deleteDepartmentHierarchy firestore notice:', e);
+    }
+    setDepartments(prev => prev.filter(d => d.id !== id));
+    if (dept) {
+      removeDepartment(dept.name);
+    }
+  };
+
+  // Division CRUD
+  const addDivision = async (data: Omit<Division, 'id'>) => {
+    const divId = `div_${data.departmentCode.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newDiv: Division = {
+      ...data,
+      id: divId,
+      organizationId: data.organizationId || userOrgId,
+      organizationCode: data.organizationCode || userOrgCode || 'APEX101',
+      createdAt: new Date().toISOString()
+    };
+    try {
+      if (isLiveFirebaseConfigured) {
+        await setDoc(doc(db, 'divisions', divId), newDiv);
+      }
+    } catch (e) {
+      console.warn('addDivision firestore notice:', e);
+    }
+    setDivisions(prev => [newDiv, ...prev.filter(d => d.id !== divId)]);
+    return newDiv;
+  };
+
+  const updateDivision = async (id: string, updates: Partial<Division>) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        await updateDoc(doc(db, 'divisions', id), updates);
+      }
+    } catch (e) {
+      console.warn('updateDivision firestore notice:', e);
+    }
+    setDivisions(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+  };
+
+  const deleteDivision = async (id: string) => {
+    try {
+      if (isLiveFirebaseConfigured) {
+        await deleteDoc(doc(db, 'divisions', id));
+      }
+    } catch (e) {
+      console.warn('deleteDivision firestore notice:', e);
+    }
+    setDivisions(prev => prev.filter(d => d.id !== id));
+  };
+
+  // Subject Allocation
+  const allocateSubjectToDivision = async (allocData: Omit<SubjectAllocation, 'id'>) => {
+    const allocId = `alloc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newAlloc: SubjectAllocation = { ...allocData, id: allocId };
+    try {
+      if (isLiveFirebaseConfigured) {
+        await setDoc(doc(db, 'subjectAllocations', allocId), newAlloc);
+      }
+    } catch (e) {
+      console.warn('allocateSubjectToDivision firestore notice:', e);
+    }
+    setSubjectAllocations(prev => [newAlloc, ...prev]);
+    return newAlloc;
+  };
+
+  // Bulk Operations
+  const bulkAddStudentsToDivision = async (
+    divisionId: string, 
+    studentsList: Array<{ fullName: string; email: string; rollNo: string; yearOfStudy?: YearOfStudy }>
+  ) => {
+    const targetDivision = divisions.find(d => d.id === divisionId);
+    if (!targetDivision) return { addedCount: 0, message: 'Division not found' };
+
+    const newUsers: UserProfile[] = [];
+    for (const s of studentsList) {
+      const studentUid = `student_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const profile: UserProfile = {
+        uid: studentUid,
+        fullName: s.fullName.trim(),
+        email: s.email.trim(),
+        role: 'student',
+        studentId: s.rollNo.trim(),
+        rollNo: s.rollNo.trim(),
+        organizationId: userOrgId,
+        organizationCode: userOrgCode || 'APEX101',
+        organizationName: currentUser?.organizationName || 'Institute',
+        department: targetDivision.departmentName,
+        departmentId: targetDivision.departmentId,
+        yearOfStudy: s.yearOfStudy || targetDivision.yearOfStudy,
+        divisionId: targetDivision.id,
+        divisionName: targetDivision.name,
+        academicYear: targetDivision.academicYear,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      newUsers.push(profile);
+      try {
+        if (isLiveFirebaseConfigured) {
+          await setDoc(doc(db, 'users', studentUid), profile);
+        }
+      } catch (e) {
+        console.warn('bulk student firestore notice:', e);
+      }
+    }
+
+    setOrganizationUsers(prev => [...newUsers, ...prev]);
+    await updateDivision(divisionId, {
+      studentCount: (targetDivision.studentCount || 0) + newUsers.length
+    });
+
+    return { 
+      addedCount: newUsers.length, 
+      message: `Successfully added ${newUsers.length} students to ${targetDivision.departmentName} - ${targetDivision.name}` 
+    };
+  };
+
+  const bulkAddFacultyToDepartment = async (
+    departmentId: string, 
+    facultyList: Array<{ fullName: string; email: string; facultyId: string; role?: 'teacher' | 'admin' }>
+  ) => {
+    const targetDept = departments.find(d => d.id === departmentId);
+    const deptName = targetDept?.name || 'General';
+
+    const newFaculty: UserProfile[] = [];
+    for (const f of facultyList) {
+      const facultyUid = `faculty_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const profile: UserProfile = {
+        uid: facultyUid,
+        fullName: f.fullName.trim(),
+        email: f.email.trim(),
+        role: f.role || 'teacher',
+        facultyId: f.facultyId.trim(),
+        organizationId: userOrgId,
+        organizationCode: userOrgCode || 'APEX101',
+        organizationName: currentUser?.organizationName || 'Institute',
+        department: deptName,
+        departmentId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      newFaculty.push(profile);
+      try {
+        if (isLiveFirebaseConfigured) {
+          await setDoc(doc(db, 'users', facultyUid), profile);
+        }
+      } catch (e) {
+        console.warn('bulk faculty firestore notice:', e);
+      }
+    }
+
+    setOrganizationUsers(prev => [...newFaculty, ...prev]);
+    return {
+      addedCount: newFaculty.length,
+      message: `Successfully onboarded ${newFaculty.length} faculty to ${deptName}`
+    };
+  };
+
+  // Complete Institute Onboarding Wizard Batch Execution
+  const completeInstituteOnboarding = async (onboardingData: {
+    institute: Partial<Organization>;
+    departments: Array<{ name: string; code: string; hodName?: string; hodEmail?: string }>;
+    divisions: Array<{ departmentCode: string; yearOfStudy: YearOfStudy; name: string; classTeacherName?: string; roomNumber?: string }>;
+    faculty: Array<{ fullName: string; email: string; facultyId: string; departmentCode: string }>;
+    students: Array<{ fullName: string; email: string; rollNo: string; departmentCode: string; yearOfStudy: YearOfStudy; divisionName: string }>;
+  }) => {
+    const currentOrgData = localStorage.getItem('smartattend_current_org');
+    const existingOrg = currentOrgData ? JSON.parse(currentOrgData) : {};
+    const updatedOrg = {
+      ...existingOrg,
+      ...onboardingData.institute,
+      departments: onboardingData.departments.map(d => d.name),
+      onboardingCompleted: true
+    };
+    localStorage.setItem('smartattend_current_org', JSON.stringify(updatedOrg));
+    if (isLiveFirebaseConfigured && updatedOrg.id) {
+      try {
+        await updateDoc(doc(db, 'organizations', updatedOrg.id), updatedOrg);
+      } catch (e) {
+        console.warn('Onboarding org update notice:', e);
+      }
+    }
+
+    const createdDepts: Department[] = [];
+    for (const d of onboardingData.departments) {
+      const deptId = `dept_${d.code.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      const newD: Department = {
+        id: deptId,
+        organizationId: userOrgId,
+        organizationCode: userOrgCode || updatedOrg.code || 'APEX101',
+        name: d.name,
+        code: d.code,
+        hodName: d.hodName,
+        hodEmail: d.hodEmail,
+        createdAt: new Date().toISOString()
+      };
+      createdDepts.push(newD);
+      if (isLiveFirebaseConfigured) {
+        try { await setDoc(doc(db, 'departments', deptId), newD); } catch {}
+      }
+    }
+    setDepartments(prev => [...createdDepts, ...prev.filter(p => !createdDepts.some(c => c.id === p.id))]);
+
+    const createdDivs: Division[] = [];
+    for (const div of onboardingData.divisions) {
+      const dept = createdDepts.find(d => d.code === div.departmentCode) || createdDepts[0];
+      const divId = `div_${div.departmentCode.toLowerCase()}_${div.yearOfStudy.replace(/\s+/g, '_').toLowerCase()}_${div.name.replace(/\s+/g, '_').toLowerCase()}`;
+      const newDiv: Division = {
+        id: divId,
+        organizationId: userOrgId,
+        organizationCode: userOrgCode || updatedOrg.code || 'APEX101',
+        departmentId: dept ? dept.id : 'dept_general',
+        departmentCode: div.departmentCode,
+        departmentName: dept ? dept.name : 'Engineering',
+        yearOfStudy: div.yearOfStudy,
+        name: div.name,
+        academicYear: updatedOrg.currentAcademicYear || '2026–27',
+        classTeacherName: div.classTeacherName,
+        roomNumber: div.roomNumber || 'Room 101',
+        studentCount: onboardingData.students.filter(s => s.departmentCode === div.departmentCode && s.yearOfStudy === div.yearOfStudy && s.divisionName === div.name).length,
+        createdAt: new Date().toISOString()
+      };
+      createdDivs.push(newDiv);
+      if (isLiveFirebaseConfigured) {
+        try { await setDoc(doc(db, 'divisions', divId), newDiv); } catch {}
+      }
+    }
+    setDivisions(prev => [...createdDivs, ...prev.filter(p => !createdDivs.some(c => c.id === p.id))]);
+
+    const newFacultyUsers: UserProfile[] = [];
+    for (const f of onboardingData.faculty) {
+      const dept = createdDepts.find(d => d.code === f.departmentCode) || createdDepts[0];
+      const facultyUid = `faculty_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const profile: UserProfile = {
+        uid: facultyUid,
+        fullName: f.fullName,
+        email: f.email,
+        role: 'teacher',
+        facultyId: f.facultyId,
+        department: dept ? dept.name : 'General',
+        departmentId: dept ? dept.id : undefined,
+        organizationId: userOrgId,
+        organizationCode: userOrgCode || updatedOrg.code || 'APEX101',
+        organizationName: updatedOrg.name,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      newFacultyUsers.push(profile);
+      if (isLiveFirebaseConfigured) {
+        try { await setDoc(doc(db, 'users', facultyUid), profile); } catch {}
+      }
+    }
+
+    const newStudentUsers: UserProfile[] = [];
+    for (const s of onboardingData.students) {
+      const dept = createdDepts.find(d => d.code === s.departmentCode) || createdDepts[0];
+      const div = createdDivs.find(d => d.departmentCode === s.departmentCode && d.yearOfStudy === s.yearOfStudy && d.name === s.divisionName);
+      const studentUid = `student_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const profile: UserProfile = {
+        uid: studentUid,
+        fullName: s.fullName,
+        email: s.email,
+        role: 'student',
+        studentId: s.rollNo,
+        rollNo: s.rollNo,
+        department: dept ? dept.name : 'General',
+        departmentId: dept ? dept.id : undefined,
+        yearOfStudy: s.yearOfStudy,
+        divisionId: div ? div.id : undefined,
+        divisionName: s.divisionName,
+        academicYear: updatedOrg.currentAcademicYear || '2026–27',
+        organizationId: userOrgId,
+        organizationCode: userOrgCode || updatedOrg.code || 'APEX101',
+        organizationName: updatedOrg.name,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      newStudentUsers.push(profile);
+      if (isLiveFirebaseConfigured) {
+        try { await setDoc(doc(db, 'users', studentUid), profile); } catch {}
+      }
+    }
+
+    setOrganizationUsers(prev => [...newFacultyUsers, ...newStudentUsers, ...prev]);
+  };
+
   // Multi-tenant organization scoping:
   // Scopes courses, enrollments, requests, sessions, and timetable to the logged-in user's institution.
-  const scopedCourses = courses.filter(c => (c.organizationId || 'org_apex_tech') === currentOrgId);
+  const userOrgId = currentUser?.organizationId || 'org_apex_tech';
+  const userOrgCode = currentUser?.organizationCode?.toUpperCase();
+
+  const isOrgMatch = (itemOrgId?: string, itemOrgCode?: string) => {
+    if (itemOrgId && userOrgId && itemOrgId === userOrgId) return true;
+    if (itemOrgCode && userOrgCode && itemOrgCode.toUpperCase() === userOrgCode) return true;
+    if (!itemOrgId && userOrgId === 'org_apex_tech') return true;
+    return false;
+  };
+
+  const scopedCourses = courses.filter(c => isOrgMatch(c.organizationId, c.organizationCode));
   const scopedCourseIds = new Set(scopedCourses.map(c => c.id));
 
   const scopedEnrollments = enrollments.filter(e => scopedCourseIds.has(e.courseId));
-  const scopedRequests = requests.filter(r => (r.organizationId ? r.organizationId === currentOrgId : scopedCourseIds.has(r.courseId)));
-  const scopedSessions = sessions.filter(s => (s.organizationId ? s.organizationId === currentOrgId : scopedCourseIds.has(s.courseId)));
+  const scopedRequests = requests.filter(r => isOrgMatch(r.organizationId, r.organizationCode) || scopedCourseIds.has(r.courseId));
+  const scopedSessions = sessions.filter(s => isOrgMatch(s.organizationId, s.organizationCode) || scopedCourseIds.has(s.courseId));
   const scopedAttendanceRecords = attendanceRecords.filter(r => scopedCourseIds.has(r.courseId));
-  const scopedTimetable = timetable.filter(t => (t.organizationId || 'org_apex_tech') === currentOrgId);
+  const scopedTimetable = timetable.filter(t => isOrgMatch(t.organizationId, t.organizationCode));
+  const scopedUsers = organizationUsers.filter(u => isOrgMatch(u.organizationId, u.organizationCode));
+  const scopedDepartments = departments.filter(d => isOrgMatch(d.organizationId, d.organizationCode));
+  const scopedDepartmentIds = new Set(scopedDepartments.map(d => d.id));
+  const scopedDivisions = divisions.filter(div => isOrgMatch(div.organizationId, div.organizationCode) || scopedDepartmentIds.has(div.departmentId));
+  const scopedDivisionIds = new Set(scopedDivisions.map(d => d.id));
+  const scopedAllocations = subjectAllocations.filter(a => scopedDivisionIds.has(a.divisionId));
 
   return (
     <DataContext.Provider
@@ -699,6 +1578,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sessions: scopedSessions,
         attendanceRecords: scopedAttendanceRecords,
         timetable: scopedTimetable,
+        organizationUsers: scopedUsers,
+        departments: scopedDepartments,
+        divisions: scopedDivisions,
+        subjectAllocations: scopedAllocations,
         addCourse,
         updateCourse,
         requestEnrollment,
@@ -713,10 +1596,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         endSession,
         verifyAndRecordAttendance,
         addTimetableSlot,
+        updateTimetableSlot,
         saveWeeklyScheduleBatch,
         deleteTimetableSlot,
         clearDepartmentSchedule,
-        updateAttendanceStatus
+        clearDivisionTimetable,
+        publishDivisionTimetable,
+        unpublishDivisionTimetable,
+        copyDayTimetable,
+        copyDivisionTimetable,
+        checkFacultyAvailability,
+        validateTimetableConflicts,
+        dayConfigs,
+        setDayConfig,
+        updateAttendanceStatus,
+        addDepartment,
+        removeDepartment,
+        assignFacultyDepartment,
+        removeFaculty,
+        addDepartmentHierarchy,
+        updateDepartmentHierarchy,
+        deleteDepartmentHierarchy,
+        addDivision,
+        updateDivision,
+        deleteDivision,
+        allocateSubjectToDivision,
+        bulkAddStudentsToDivision,
+        bulkAddFacultyToDepartment,
+        completeInstituteOnboarding
       }}
     >
       {children}
