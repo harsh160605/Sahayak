@@ -26,7 +26,11 @@ interface NavItem {
   badge?: number;
 }
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const { currentUser, logout, switchUserRole } = useAuth();
   const { requests } = useData();
 
@@ -135,9 +139,10 @@ export const Sidebar: React.FC = () => {
                 key={item.to}
                 to={item.to}
                 end={item.to === '/teacher' || item.to === '/student'}
+                onClick={onClose}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center justify-between px-3 py-2 text-xs font-medium rounded-md transition-colors",
+                    "flex items-center justify-between px-3 py-2.5 min-h-[42px] text-xs font-medium rounded-md transition-colors",
                     isActive
                       ? "bg-navy-900 text-surface shadow-subtle"
                       : "text-navy-700 hover:text-navy-900 hover:bg-warm-200/70",
@@ -177,10 +182,13 @@ export const Sidebar: React.FC = () => {
         </button>
 
         <button
-          onClick={logout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-navy-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+          onClick={() => {
+            onClose?.();
+            logout();
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[44px] text-xs font-medium text-navy-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
         >
-          <LogOut className="h-4 w-4" strokeWidth={1.8} />
+          <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />
           <span>Sign Out</span>
         </button>
       </div>

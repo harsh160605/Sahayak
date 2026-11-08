@@ -76,17 +76,17 @@ export const InstituteDirectory: React.FC = () => {
         </div>
 
         {/* Quick Stats Pill */}
-        <div className="flex items-center gap-3">
-          <div className="px-3.5 py-2 rounded-lg bg-warm-100 border border-warm-300 text-center min-w-[90px]">
-            <span className="text-lg font-bold text-navy-900 font-mono">{facultyCount}</span>
+        <div className="grid grid-cols-3 sm:flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="px-2.5 sm:px-3.5 py-2 rounded-lg bg-warm-100 border border-warm-300 text-center sm:min-w-[90px]">
+            <span className="text-base sm:text-lg font-bold text-navy-900 font-mono">{facultyCount}</span>
             <p className="text-[10px] font-semibold text-navy-600 uppercase tracking-wider">Faculty</p>
           </div>
-          <div className="px-3.5 py-2 rounded-lg bg-warm-100 border border-warm-300 text-center min-w-[90px]">
-            <span className="text-lg font-bold text-primary font-mono">{studentCount}</span>
+          <div className="px-2.5 sm:px-3.5 py-2 rounded-lg bg-warm-100 border border-warm-300 text-center sm:min-w-[90px]">
+            <span className="text-base sm:text-lg font-bold text-primary font-mono">{studentCount}</span>
             <p className="text-[10px] font-semibold text-navy-600 uppercase tracking-wider">Students</p>
           </div>
-          <div className="px-3.5 py-2 rounded-lg bg-warm-100 border border-warm-300 text-center min-w-[90px]">
-            <span className="text-lg font-bold text-navy-900 font-mono">{courses.length}</span>
+          <div className="px-2.5 sm:px-3.5 py-2 rounded-lg bg-warm-100 border border-warm-300 text-center sm:min-w-[90px]">
+            <span className="text-base sm:text-lg font-bold text-navy-900 font-mono">{courses.length}</span>
             <p className="text-[10px] font-semibold text-navy-600 uppercase tracking-wider">Courses</p>
           </div>
         </div>
@@ -180,7 +180,7 @@ export const InstituteDirectory: React.FC = () => {
                       <h3 className="text-sm font-bold text-navy-900 flex items-center gap-1.5">
                         {user.fullName}
                         {user.role === 'admin' && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300">
                             ADMIN
                           </span>
                         )}

@@ -13,7 +13,9 @@ import {
   SubjectAllocation,
   YearOfStudy,
   Organization,
-  DayOfWeek
+  DayOfWeek,
+  LectureConductStatus,
+  LectureSessionCategory
 } from '../types';
 import { 
   INITIAL_COURSES, 
@@ -62,6 +64,9 @@ interface DataContextType {
   deleteDivision: (id: string) => Promise<void>;
   
   allocateSubjectToDivision: (alloc: Omit<SubjectAllocation, 'id'>) => Promise<SubjectAllocation>;
+  updateSubjectAllocation: (allocationId: string, updates: Partial<SubjectAllocation>) => Promise<void>;
+  removeSubjectAllocation: (allocationId: string) => Promise<void>;
+  isFacultyAuthorizedForCourse: (teacherId: string, courseId: string, divisionId?: string, batch?: string) => boolean;
   bulkAddStudentsToDivision: (divisionId: string, students: Array<{ fullName: string; email: string; rollNo: string; yearOfStudy?: YearOfStudy }>) => Promise<{ addedCount: number; message: string }>;
   bulkAddFacultyToDepartment: (departmentId: string, facultyList: Array<{ fullName: string; email: string; facultyId: string; role?: 'teacher' | 'admin' }>) => Promise<{ addedCount: number; message: string }>;
   
@@ -90,8 +95,40 @@ interface DataContextType {
     teacherId: string, 
     lectureTopic: string, 
     qrRefreshIntervalSeconds: 3 | 5,
-    geofence?: GeoLocationConfig
+    geofence?: GeoLocationConfig,
+    divisionId?: string,
+    batch?: string,
+    options?: {
+      sessionCategory?: 'regular' | 'extra';
+      timetableSlotId?: string;
+      lectureDate?: string;
+      scheduledStartTime?: string;
+      scheduledEndTime?: string;
+      room?: string;
+    }
   ) => Promise<AttendanceSession>;
+  cancelScheduledLecture: (slotId: string, date: string, reason: string) => Promise<AttendanceSession>;
+  rescheduleLecture: (slotId: string, date: string, rescheduledTo: { date: string; startTime: string; endTime: string; room?: string; reason?: string }) => Promise<AttendanceSession>;
+  scheduleExtraLecture: (data: {
+    courseId: string;
+    divisionId: string;
+    batch?: string;
+    lectureDate: string;
+    startTime: string;
+    endTime: string;
+    topic: string;
+    room?: string;
+    qrRefreshIntervalSeconds?: 3 | 5;
+    geofence?: GeoLocationConfig;
+  }) => Promise<AttendanceSession>;
+  getSlotConductStatus: (slot: TimetableSlot, dateStr?: string) => {
+    status: LectureConductStatus;
+    session?: AttendanceSession;
+    cancellationReason?: string;
+    isLiveNow: boolean;
+    isEligibleForQR: boolean;
+    eligibilityReason?: string;
+  };
   updateSessionToken: (sessionId: string, token: string, expiresAt: number) => Promise<void>;
   pauseSession: (sessionId: string) => Promise<void>;
   resumeSession: (sessionId: string) => Promise<void>;
@@ -628,15 +665,242 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Session actions with Geofence configuration
+  // Faculty Subject Authorization Validation
+  const isFacultyAuthorizedForCourse = (
+    teacherId: string, 
+    courseId: string, 
+    divisionId?: string, 
+    batch?: string
+  ): boolean => {
+    if (!teacherId || !courseId) return false;
+    
+    // Admins have institutional authority to supervise/conduct all courses
+    if (currentUser?.role === 'admin') return true;
+
+    // Check 1: Direct course assignment
+    const course = courses.find(c => c.id === courseId);
+    if (course && (course.teacherId === teacherId || (currentUser?.fullName && course.teacherName === currentUser.fullName))) {
+      return true;
+    }
+
+    // Check 2: Subject Allocation established by Department Admin
+    const hasAllocation = subjectAllocations.some(a => {
+      if (a.courseId !== courseId) return false;
+      const matchesTeacher = a.teacherId === teacherId || (currentUser?.email && a.teacherEmail === currentUser.email);
+      if (!matchesTeacher) return false;
+      if (divisionId && a.divisionId && a.divisionId !== divisionId) return false;
+      if (batch && a.batch && a.batch !== 'All' && a.batch !== batch) return false;
+      return true;
+    });
+
+    if (hasAllocation) return true;
+
+    // Check 3: Timetable slot assignment
+    const hasSlot = timetable.some(t => {
+      if (t.courseId !== courseId) return false;
+      const isPrimary = t.teacherId === teacherId;
+      const isAdditional = t.additionalTeacherIds?.includes(teacherId);
+      if (!isPrimary && !isAdditional) return false;
+      if (divisionId && t.divisionId && t.divisionId !== divisionId) return false;
+      return true;
+    });
+
+    return Boolean(hasSlot);
+  };
+
+  // Date and Time calculation helpers for intelligent timetable resolution
+  const getTodayDateString = (): string => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const parseTimeToMinutes = (timeStr: string): number => {
+    if (!timeStr) return 0;
+    const [h, m] = timeStr.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  // Determines real-time conduct status of a timetable slot without penalizing student attendance
+  const getSlotConductStatus = (
+    slot: TimetableSlot, 
+    dateStr?: string
+  ): {
+    status: LectureConductStatus;
+    session?: AttendanceSession;
+    cancellationReason?: string;
+    isLiveNow: boolean;
+    isEligibleForQR: boolean;
+    eligibilityReason?: string;
+  } => {
+    const targetDate = dateStr || getTodayDateString();
+    const today = getTodayDateString();
+
+    // Check if an explicit attendance session, cancellation, or reschedule already exists
+    const matchingSession = sessions.find(s => 
+      (s.timetableSlotId === slot.id || (s.courseId === slot.courseId && s.divisionId === slot.divisionId && s.scheduledStartTime === slot.startTime)) &&
+      (s.lectureDate === targetDate || (s.startedAt && s.startedAt.startsWith(targetDate)))
+    );
+
+    if (matchingSession) {
+      if (matchingSession.conductStatus === 'CANCELLED') {
+        return {
+          status: 'CANCELLED',
+          session: matchingSession,
+          cancellationReason: matchingSession.cancellationReason || 'Lecture cancelled by faculty.',
+          isLiveNow: false,
+          isEligibleForQR: false,
+          eligibilityReason: 'This lecture was explicitly cancelled.'
+        };
+      }
+      if (matchingSession.conductStatus === 'RESCHEDULED') {
+        return {
+          status: 'RESCHEDULED',
+          session: matchingSession,
+          cancellationReason: matchingSession.cancellationReason,
+          isLiveNow: false,
+          isEligibleForQR: false,
+          eligibilityReason: 'This lecture was rescheduled.'
+        };
+      }
+      if (matchingSession.status === 'active') {
+        return {
+          status: 'IN_PROGRESS',
+          session: matchingSession,
+          isLiveNow: true,
+          isEligibleForQR: true,
+          eligibilityReason: 'Attendance session currently active and broadcasting.'
+        };
+      }
+      if (matchingSession.status === 'ended') {
+        return {
+          status: 'COMPLETED',
+          session: matchingSession,
+          isLiveNow: false,
+          isEligibleForQR: false,
+          eligibilityReason: 'Attendance session has already been completed for this lecture.'
+        };
+      }
+    }
+
+    // Determine based on slot time
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const slotStartMinutes = parseTimeToMinutes(slot.startTime);
+    const slotEndMinutes = parseTimeToMinutes(slot.endTime);
+
+    const isPastDate = targetDate < today;
+    const isFutureDate = targetDate > today;
+
+    if (isPastDate) {
+      // Historical slot without attendance conducted -> NOT CONDUCTED (Never marks students absent)
+      return {
+        status: 'NOT_CONDUCTED',
+        isLiveNow: false,
+        isEligibleForQR: false,
+        eligibilityReason: 'Scheduled time passed without attendance being conducted.'
+      };
+    }
+
+    if (isFutureDate) {
+      return {
+        status: 'SCHEDULED',
+        isLiveNow: false,
+        isEligibleForQR: false,
+        eligibilityReason: 'Scheduled for an upcoming date.'
+      };
+    }
+
+    // Target date is TODAY
+    // Allow launching attendance 15 minutes prior to start until 20 minutes after scheduled end
+    const earliestEligible = slotStartMinutes - 15;
+    const latestEligible = slotEndMinutes + 20;
+
+    const isLiveNow = currentMinutes >= slotStartMinutes && currentMinutes <= slotEndMinutes;
+    const isEligibleWindow = currentMinutes >= earliestEligible && currentMinutes <= latestEligible;
+
+    if (currentMinutes > latestEligible) {
+      // Slot window expired without attendance started -> NOT CONDUCTED
+      return {
+        status: 'NOT_CONDUCTED',
+        isLiveNow: false,
+        isEligibleForQR: currentUser?.role === 'admin', // Admins can override for simulation/testing
+        eligibilityReason: 'Lecture time slot has expired without attendance being conducted.'
+      };
+    }
+
+    if (isEligibleWindow) {
+      return {
+        status: isLiveNow ? 'IN_PROGRESS' : 'SCHEDULED',
+        isLiveNow,
+        isEligibleForQR: true,
+        eligibilityReason: 'Eligible for live QR attendance.'
+      };
+    }
+
+    // Class is scheduled later today
+    return {
+      status: 'SCHEDULED',
+      isLiveNow: false,
+      isEligibleForQR: currentUser?.role === 'admin', // Admin bypass for preview
+      eligibilityReason: `Scheduled for ${slot.startTime}. QR generation opens 15 minutes before class.`
+    };
+  };
+
+  // Session actions with Geofence configuration & strict timetable-based authorization enforcement
   const startAttendanceSession = async (
     courseId: string, 
     teacherId: string, 
     lectureTopic: string, 
     qrRefreshIntervalSeconds: 3 | 5,
-    geofence?: GeoLocationConfig
+    geofence?: GeoLocationConfig,
+    divisionId?: string,
+    batch?: string,
+    options?: {
+      sessionCategory?: 'regular' | 'extra';
+      timetableSlotId?: string;
+      lectureDate?: string;
+      scheduledStartTime?: string;
+      scheduledEndTime?: string;
+      room?: string;
+    }
   ) => {
+    if (!currentUser) {
+      throw new Error('Authentication required to start an attendance session.');
+    }
+
+    // Security check: Teacher cannot start session on behalf of another teacher unless admin
+    if (currentUser.role !== 'admin' && currentUser.uid !== teacherId) {
+      throw new Error('Unauthorized: You cannot start an attendance session on behalf of another faculty member.');
+    }
+
+    // Authorization check: Verify faculty is assigned and authorized for this course & division
+    const isAuthorized = isFacultyAuthorizedForCourse(teacherId, courseId, divisionId, batch);
+    if (!isAuthorized) {
+      throw new Error('Unauthorized: You are not assigned to conduct attendance for this subject.');
+    }
+
+    // Timetable-based QR check for regular sessions
+    if (options?.timetableSlotId && options.sessionCategory !== 'extra') {
+      const slot = timetable.find(t => t.id === options.timetableSlotId);
+      if (slot) {
+        const slotCheck = getSlotConductStatus(slot, options.lectureDate);
+        if (slotCheck.status === 'COMPLETED') {
+          throw new Error('Duplicate Session Prevented: Attendance has already been completed for this scheduled lecture today.');
+        }
+        if (slotCheck.status === 'CANCELLED') {
+          throw new Error('Lecture Cancelled: This scheduled lecture was marked as cancelled.');
+        }
+        if (!slotCheck.isEligibleForQR && currentUser.role !== 'admin') {
+          throw new Error(`Schedule Restriction: ${slotCheck.eligibilityReason || 'This lecture slot is not currently eligible for attendance.'}`);
+        }
+      }
+    }
+
     const course = courses.find(c => c.id === courseId);
+    const div = divisionId ? divisions.find(d => d.id === divisionId) : undefined;
     const sessId = `sess_${Date.now()}`;
     const newSession: AttendanceSession = {
       id: sessId,
@@ -644,61 +908,354 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       courseCode: course?.courseCode || 'CRS',
       courseName: course?.courseName || 'Lecture Session',
       teacherId,
+      teacherName: currentUser.fullName,
       lectureTopic: lectureTopic.trim() || 'Scheduled Lecture',
       startedAt: new Date().toISOString(),
       status: 'active',
+      conductStatus: 'IN_PROGRESS',
+      sessionCategory: options?.sessionCategory || 'regular',
+      isExtraLecture: options?.sessionCategory === 'extra',
+      timetableSlotId: options?.timetableSlotId,
+      lectureDate: options?.lectureDate || getTodayDateString(),
+      scheduledStartTime: options?.scheduledStartTime,
+      scheduledEndTime: options?.scheduledEndTime,
+      room: options?.room,
       qrRefreshIntervalSeconds,
       totalPresent: 0,
       createdAt: new Date().toISOString(),
       organizationId: course?.organizationId || currentUser?.organizationId || 'org_apex_tech',
       organizationCode: course?.organizationCode || currentUser?.organizationCode || 'APEX101',
+      departmentId: course?.departmentId || div?.departmentId,
+      departmentName: course?.department || div?.departmentName,
+      academicYear: course?.academicYear || div?.academicYear || '2026–27',
+      yearOfStudy: course?.yearOfStudy || div?.yearOfStudy,
+      semester: course?.semester,
+      divisionId: divisionId || course?.divisionId,
+      divisionName: div?.name || course?.divisionName,
+      batch: batch || 'All',
       ...(geofence ? { geofence } : {})
     };
 
+    // Always update in-memory state and localStorage immediately
+    setSessions(prev => [newSession, ...prev]);
+    try {
+      const saved = localStorage.getItem('smartattend_sessions');
+      const list = saved ? JSON.parse(saved) : [];
+      localStorage.setItem('smartattend_sessions', JSON.stringify([newSession, ...list.filter((s: any) => s.id !== sessId)]));
+    } catch {}
+
     if (isLiveFirebaseConfigured) {
-      await setDoc(doc(db, 'attendanceSessions', sessId), newSession);
-    } else {
-      setSessions(prev => [newSession, ...prev]);
+      try {
+        await setDoc(doc(db, 'attendanceSessions', sessId), newSession);
+      } catch (err) {
+        console.warn('Firestore setDoc notice for attendanceSessions (fallback to local state):', err);
+      }
     }
 
     return newSession;
   };
 
-  const updateSessionToken = async (sessionId: string, token: string, expiresAt: number) => {
+  // Faculty Cancellation of a Scheduled Lecture with Reason (Students not marked absent)
+  const cancelScheduledLecture = async (
+    slotId: string, 
+    date: string, 
+    reason: string
+  ): Promise<AttendanceSession> => {
+    if (!currentUser) throw new Error('Authentication required.');
+
+    const slot = timetable.find(t => t.id === slotId);
+    if (!slot) throw new Error('Timetable slot not found.');
+
+    const isOwner = slot.teacherId === currentUser.uid || 
+      slot.additionalTeacherIds?.includes(currentUser.uid) || 
+      currentUser.role === 'admin';
+    if (!isOwner) throw new Error('Unauthorized: You can only cancel your own scheduled lectures.');
+
+    const course = courses.find(c => c.id === slot.courseId);
+    const div = slot.divisionId ? divisions.find(d => d.id === slot.divisionId) : undefined;
+    const sessId = `sess_cancel_${slot.id}_${date.replace(/[^0-9]/g, '')}`;
+
+    const cancelRecord: AttendanceSession = {
+      id: sessId,
+      courseId: slot.courseId || '',
+      courseCode: slot.courseCode || course?.courseCode || 'CRS',
+      courseName: slot.courseName || course?.courseName || 'Lecture Session',
+      teacherId: currentUser.uid,
+      teacherName: currentUser.fullName,
+      lectureTopic: slot.notes || 'Scheduled Lecture',
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+      status: 'ended',
+      conductStatus: 'CANCELLED',
+      sessionCategory: 'regular',
+      timetableSlotId: slot.id,
+      lectureDate: date,
+      scheduledStartTime: slot.startTime,
+      scheduledEndTime: slot.endTime,
+      room: slot.room,
+      cancellationReason: reason.trim() || 'Faculty officially unavailable / on approved institutional leave.',
+      qrRefreshIntervalSeconds: 3,
+      totalPresent: 0,
+      createdAt: new Date().toISOString(),
+      organizationId: slot.organizationId || currentUser.organizationId || 'org_apex_tech',
+      organizationCode: slot.organizationCode || currentUser.organizationCode || 'APEX101',
+      divisionId: slot.divisionId,
+      divisionName: slot.divisionName || div?.name,
+      departmentId: slot.departmentId,
+      departmentName: slot.department,
+      academicYear: slot.academicYear || '2026–27',
+      yearOfStudy: slot.yearOfStudy,
+      semester: slot.semester
+    };
+
+    setSessions(prev => [cancelRecord, ...prev.filter(s => s.id !== sessId)]);
     if (isLiveFirebaseConfigured) {
-      await updateDoc(doc(db, 'attendanceSessions', sessionId), {
-        currentQrToken: token,
-        tokenExpiresAt: expiresAt
-      });
-    } else {
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, currentQrToken: token, tokenExpiresAt: expiresAt } : s));
+      try {
+        await setDoc(doc(db, 'attendanceSessions', sessId), cancelRecord);
+      } catch (err) {
+        console.warn('cancelScheduledLecture setDoc notice:', err);
+      }
+    }
+
+    return cancelRecord;
+  };
+
+  // Faculty Rescheduling of a Scheduled Lecture with Notification Reason
+  const rescheduleLecture = async (
+    slotId: string, 
+    date: string, 
+    rescheduledTo: { date: string; startTime: string; endTime: string; room?: string; reason?: string }
+  ): Promise<AttendanceSession> => {
+    if (!currentUser) throw new Error('Authentication required.');
+
+    const slot = timetable.find(t => t.id === slotId);
+    if (!slot) throw new Error('Timetable slot not found.');
+
+    const isOwner = slot.teacherId === currentUser.uid || 
+      slot.additionalTeacherIds?.includes(currentUser.uid) || 
+      currentUser.role === 'admin';
+    if (!isOwner) throw new Error('Unauthorized: You can only reschedule your own scheduled lectures.');
+
+    const course = courses.find(c => c.id === slot.courseId);
+    const div = slot.divisionId ? divisions.find(d => d.id === slot.divisionId) : undefined;
+    const sessId = `sess_resched_${slot.id}_${date.replace(/[^0-9]/g, '')}`;
+
+    const reschedRecord: AttendanceSession = {
+      id: sessId,
+      courseId: slot.courseId || '',
+      courseCode: slot.courseCode || course?.courseCode || 'CRS',
+      courseName: slot.courseName || course?.courseName || 'Lecture Session',
+      teacherId: currentUser.uid,
+      teacherName: currentUser.fullName,
+      lectureTopic: slot.notes || 'Scheduled Lecture',
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+      status: 'ended',
+      conductStatus: 'RESCHEDULED',
+      sessionCategory: 'regular',
+      timetableSlotId: slot.id,
+      lectureDate: date,
+      scheduledStartTime: slot.startTime,
+      scheduledEndTime: slot.endTime,
+      room: slot.room,
+      cancellationReason: rescheduledTo.reason || `Rescheduled to ${rescheduledTo.date} (${rescheduledTo.startTime}–${rescheduledTo.endTime})`,
+      rescheduledTo,
+      qrRefreshIntervalSeconds: 3,
+      totalPresent: 0,
+      createdAt: new Date().toISOString(),
+      organizationId: slot.organizationId || currentUser.organizationId || 'org_apex_tech',
+      organizationCode: slot.organizationCode || currentUser.organizationCode || 'APEX101',
+      divisionId: slot.divisionId,
+      divisionName: slot.divisionName || div?.name,
+      departmentId: slot.departmentId,
+      departmentName: slot.department,
+      academicYear: slot.academicYear || '2026–27',
+      yearOfStudy: slot.yearOfStudy,
+      semester: slot.semester
+    };
+
+    setSessions(prev => [reschedRecord, ...prev.filter(s => s.id !== sessId)]);
+    if (isLiveFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'attendanceSessions', sessId), reschedRecord);
+      } catch (err) {
+        console.warn('rescheduleLecture setDoc notice:', err);
+      }
+    }
+
+    return reschedRecord;
+  };
+
+  // Schedule and Launch an Extra Lecture (Manual Scheduling without modifying official timetable)
+  const scheduleExtraLecture = async (data: {
+    courseId: string;
+    divisionId: string;
+    batch?: string;
+    lectureDate: string;
+    startTime: string;
+    endTime: string;
+    topic: string;
+    room?: string;
+    qrRefreshIntervalSeconds?: 3 | 5;
+    geofence?: GeoLocationConfig;
+  }): Promise<AttendanceSession> => {
+    if (!currentUser) throw new Error('Authentication required.');
+
+    // 1. Authorization check: Course and division must be allocated to logged-in faculty (or admin)
+    const isAuthorized = isFacultyAuthorizedForCourse(currentUser.uid, data.courseId, data.divisionId, data.batch);
+    if (!isAuthorized) {
+      throw new Error('Unauthorized: You can only conduct extra lectures for subjects and divisions allocated to you by your Department Admin.');
+    }
+
+    // 2. Validate time boundaries
+    if (data.startTime >= data.endTime) {
+      throw new Error('Invalid Time Window: Start time must be strictly earlier than end time.');
+    }
+
+    // 3. Prevent duplicate active extra lecture for same teacher + course + date + start time
+    const existing = sessions.find(s => 
+      s.isExtraLecture && 
+      s.teacherId === currentUser.uid && 
+      s.courseId === data.courseId && 
+      s.divisionId === data.divisionId && 
+      s.lectureDate === data.lectureDate &&
+      s.scheduledStartTime === data.startTime &&
+      s.status !== 'ended'
+    );
+    if (existing) {
+      throw new Error('Duplicate Extra Lecture: An extra lecture session is already active or scheduled for this time.');
+    }
+
+    const course = courses.find(c => c.id === data.courseId);
+    const div = divisions.find(d => d.id === data.divisionId);
+    const sessId = `sess_extra_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    const extraSession: AttendanceSession = {
+      id: sessId,
+      courseId: data.courseId,
+      courseCode: course?.courseCode || 'CRS',
+      courseName: course?.courseName || 'Extra Lecture',
+      teacherId: currentUser.uid,
+      teacherName: currentUser.fullName,
+      lectureTopic: `[EXTRA LECTURE] ${data.topic.trim() || 'Additional Academic Session'}`,
+      startedAt: new Date().toISOString(),
+      status: 'active',
+      conductStatus: 'IN_PROGRESS',
+      sessionCategory: 'extra',
+      isExtraLecture: true,
+      lectureDate: data.lectureDate,
+      scheduledStartTime: data.startTime,
+      scheduledEndTime: data.endTime,
+      room: data.room || 'Classroom Hall',
+      qrRefreshIntervalSeconds: data.qrRefreshIntervalSeconds || 3,
+      totalPresent: 0,
+      createdAt: new Date().toISOString(),
+      organizationId: course?.organizationId || currentUser.organizationId || 'org_apex_tech',
+      organizationCode: course?.organizationCode || currentUser.organizationCode || 'APEX101',
+      divisionId: data.divisionId,
+      divisionName: div?.name || course?.divisionName,
+      batch: data.batch || 'All',
+      departmentId: course?.departmentId || div?.departmentId,
+      departmentName: course?.department || div?.departmentName,
+      academicYear: course?.academicYear || div?.academicYear || '2026–27',
+      yearOfStudy: course?.yearOfStudy || div?.yearOfStudy,
+      semester: course?.semester,
+      ...(data.geofence ? { geofence: data.geofence } : {})
+    };
+
+    setSessions(prev => [extraSession, ...prev]);
+    try {
+      const saved = localStorage.getItem('smartattend_sessions');
+      const list = saved ? JSON.parse(saved) : [];
+      localStorage.setItem('smartattend_sessions', JSON.stringify([extraSession, ...list.filter((s: any) => s.id !== sessId)]));
+    } catch {}
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'attendanceSessions', sessId), extraSession);
+      } catch (err) {
+        console.warn('scheduleExtraLecture setDoc notice:', err);
+      }
+    }
+
+    return extraSession;
+  };
+
+  const updateSessionToken = async (sessionId: string, token: string, expiresAt: number) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session && currentUser?.role !== 'admin' && session.teacherId !== currentUser?.uid) {
+      console.warn(`[SECURITY] Blocked unauthorized token update on session ${sessionId} by ${currentUser?.uid}`);
+      return;
+    }
+
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, currentQrToken: token, tokenExpiresAt: expiresAt } : s));
+    if (isLiveFirebaseConfigured) {
+      try {
+        await updateDoc(doc(db, 'attendanceSessions', sessionId), {
+          currentQrToken: token,
+          tokenExpiresAt: expiresAt
+        });
+      } catch (err) {
+        console.warn('Firestore updateDoc notice for session token (fallback to local state):', err);
+      }
     }
   };
 
   const pauseSession = async (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session && currentUser?.role !== 'admin' && session.teacherId !== currentUser?.uid) {
+      throw new Error('Unauthorized: You can only control your own attendance sessions.');
+    }
+
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'paused' } : s));
     if (isLiveFirebaseConfigured) {
-      await updateDoc(doc(db, 'attendanceSessions', sessionId), { status: 'paused' });
-    } else {
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'paused' } : s));
+      try {
+        await updateDoc(doc(db, 'attendanceSessions', sessionId), { status: 'paused' });
+      } catch (err) {
+        console.warn('Firestore updateDoc notice for pause session (fallback to local state):', err);
+      }
     }
   };
 
   const resumeSession = async (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session && currentUser?.role !== 'admin' && session.teacherId !== currentUser?.uid) {
+      throw new Error('Unauthorized: You can only control your own attendance sessions.');
+    }
+
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'active' } : s));
     if (isLiveFirebaseConfigured) {
-      await updateDoc(doc(db, 'attendanceSessions', sessionId), { status: 'active' });
-    } else {
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'active' } : s));
+      try {
+        await updateDoc(doc(db, 'attendanceSessions', sessionId), { status: 'active' });
+      } catch (err) {
+        console.warn('Firestore updateDoc notice for resume session (fallback to local state):', err);
+      }
     }
   };
 
   const endSession = async (sessionId: string) => {
+    const session = sessions.find(s => s.id === sessionId);
+    if (session && currentUser?.role !== 'admin' && session.teacherId !== currentUser?.uid) {
+      throw new Error('Unauthorized: You can only end your own attendance sessions.');
+    }
+
+    setSessions(prev => prev.map(s => s.id === sessionId ? { 
+      ...s, 
+      status: 'ended', 
+      conductStatus: 'COMPLETED',
+      endedAt: new Date().toISOString() 
+    } : s));
+
     if (isLiveFirebaseConfigured) {
-      await updateDoc(doc(db, 'attendanceSessions', sessionId), { 
-        status: 'ended', 
-        endedAt: new Date().toISOString() 
-      });
-    } else {
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'ended', endedAt: new Date().toISOString() } : s));
+      try {
+        await updateDoc(doc(db, 'attendanceSessions', sessionId), { 
+          status: 'ended', 
+          conductStatus: 'COMPLETED',
+          endedAt: new Date().toISOString() 
+        });
+      } catch (err) {
+        console.warn('Firestore updateDoc notice for end session (fallback to local state):', err);
+      }
     }
   };
 
@@ -812,14 +1369,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } : {})
     };
 
+    setAttendanceRecords(prev => [newRecord, ...prev]);
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s));
+    try {
+      const savedRecs = localStorage.getItem('smartattend_attendance_records');
+      const list = savedRecs ? JSON.parse(savedRecs) : [];
+      localStorage.setItem('smartattend_attendance_records', JSON.stringify([newRecord, ...list]));
+    } catch {}
+
     if (isLiveFirebaseConfigured) {
-      await setDoc(doc(db, 'attendanceRecords', recordId), newRecord);
-      await updateDoc(doc(db, 'attendanceSessions', sessionId), {
-        totalPresent: (session.totalPresent || 0) + 1
-      });
-    } else {
-      setAttendanceRecords(prev => [newRecord, ...prev]);
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s));
+      try {
+        await setDoc(doc(db, 'attendanceRecords', recordId), newRecord);
+        await updateDoc(doc(db, 'attendanceSessions', sessionId), {
+          totalPresent: (session.totalPresent || 0) + 1
+        });
+      } catch (err) {
+        console.warn('Firestore write notice for attendanceRecords (fallback to local state):', err);
+      }
     }
 
     return { 
@@ -1146,6 +1712,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateAttendanceStatus = async (recordId: string, newStatus: 'present' | 'absent' | 'late' | 'excused', reason: string) => {
+    const record = attendanceRecords.find(r => r.id === recordId);
+    if (record) {
+      const session = sessions.find(s => s.id === record.sessionId);
+      if (session && currentUser?.role !== 'admin' && session.teacherId !== currentUser?.uid) {
+        throw new Error('Unauthorized: You can only modify attendance records for your own sessions.');
+      }
+    }
+
     if (isLiveFirebaseConfigured) {
       await updateDoc(doc(db, 'attendanceRecords', recordId), { status: newStatus });
     } else {
@@ -1307,10 +1881,42 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDivisions(prev => prev.filter(d => d.id !== id));
   };
 
-  // Subject Allocation
+  // Subject Allocation with Duplicate Protection & Admin Authorization
   const allocateSubjectToDivision = async (allocData: Omit<SubjectAllocation, 'id'>) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Unauthorized: Only Department Administrators can assign subjects to faculty members.');
+    }
+
+    if (!allocData.courseId || !allocData.teacherId || !allocData.divisionId) {
+      throw new Error('Missing required fields: Subject, Faculty, and Division are required.');
+    }
+
+    // Duplicate check: Prevent assigning the exact same course to the same division and batch
+    const targetBatch = allocData.batch || 'All';
+    const targetAcademicYear = allocData.academicYear || '';
+    const isDuplicate = subjectAllocations.some(a => 
+      a.divisionId === allocData.divisionId &&
+      a.courseId === allocData.courseId &&
+      (a.batch || 'All') === targetBatch &&
+      (!targetAcademicYear || !a.academicYear || a.academicYear === targetAcademicYear)
+    );
+
+    if (isDuplicate) {
+      throw new Error(`Duplicate assignment: This subject is already assigned to this division (${targetBatch === 'All' ? 'Full Class' : targetBatch}). Please edit or remove the existing assignment.`);
+    }
+
     const allocId = `alloc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newAlloc: SubjectAllocation = { ...allocData, id: allocId };
+    const newAlloc: SubjectAllocation = {
+      ...allocData,
+      id: allocId,
+      organizationId: allocData.organizationId || userOrgId,
+      organizationCode: allocData.organizationCode || userOrgCode || 'APEX101',
+      batch: targetBatch,
+      assignedBy: currentUser.uid,
+      assignedAt: new Date().toISOString(),
+      status: 'active'
+    };
+
     try {
       if (isLiveFirebaseConfigured) {
         await setDoc(doc(db, 'subjectAllocations', allocId), newAlloc);
@@ -1320,6 +1926,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setSubjectAllocations(prev => [newAlloc, ...prev]);
     return newAlloc;
+  };
+
+  const updateSubjectAllocation = async (allocationId: string, updates: Partial<SubjectAllocation>) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Unauthorized: Only Department Administrators can edit subject assignments.');
+    }
+
+    try {
+      if (isLiveFirebaseConfigured) {
+        await updateDoc(doc(db, 'subjectAllocations', allocationId), updates);
+      }
+    } catch (e) {
+      console.warn('updateSubjectAllocation firestore notice:', e);
+    }
+    setSubjectAllocations(prev => prev.map(a => a.id === allocationId ? { ...a, ...updates } : a));
+  };
+
+  const removeSubjectAllocation = async (allocationId: string) => {
+    if (currentUser?.role !== 'admin') {
+      throw new Error('Unauthorized: Only Department Administrators can remove subject assignments.');
+    }
+
+    try {
+      if (isLiveFirebaseConfigured) {
+        await deleteDoc(doc(db, 'subjectAllocations', allocationId));
+      }
+    } catch (e) {
+      console.warn('removeSubjectAllocation firestore notice:', e);
+    }
+    setSubjectAllocations(prev => prev.filter(a => a.id !== allocationId));
   };
 
   // Bulk Operations
@@ -1567,7 +2203,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const scopedDepartmentIds = new Set(scopedDepartments.map(d => d.id));
   const scopedDivisions = divisions.filter(div => isOrgMatch(div.organizationId, div.organizationCode) || scopedDepartmentIds.has(div.departmentId));
   const scopedDivisionIds = new Set(scopedDivisions.map(d => d.id));
-  const scopedAllocations = subjectAllocations.filter(a => scopedDivisionIds.has(a.divisionId));
+  const scopedAllocations = subjectAllocations.filter(a => 
+    isOrgMatch(a.organizationId, a.organizationCode) || 
+    scopedDivisionIds.has(a.divisionId) ||
+    scopedCourseIds.has(a.courseId)
+  );
 
   return (
     <DataContext.Provider
@@ -1621,6 +2261,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateDivision,
         deleteDivision,
         allocateSubjectToDivision,
+        updateSubjectAllocation,
+        removeSubjectAllocation,
+        isFacultyAuthorizedForCourse,
+        cancelScheduledLecture,
+        rescheduleLecture,
+        scheduleExtraLecture,
+        getSlotConductStatus,
         bulkAddStudentsToDivision,
         bulkAddFacultyToDepartment,
         completeInstituteOnboarding

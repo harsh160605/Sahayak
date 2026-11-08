@@ -23,6 +23,7 @@ import {
   Users,
   ShieldCheck,
   ChevronRight,
+  ChevronLeft,
   CalendarDays,
   Palmtree,
   CheckCircle2,
@@ -100,7 +101,48 @@ export const TimetableSchedule: React.FC = () => {
   }, [divisions, selectedDivisionId, matchingDivisions]);
 
   // Day Selection
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>('Monday');
+  const todayRawIndex = new Date().getDay(); // 0 is Sunday
+  const todayDayName: DayOfWeek = todayRawIndex === 0 ? 'Monday' : (days[todayRawIndex - 1] || 'Monday');
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(todayDayName);
+
+  // Mobile Swipe Navigation between weekdays
+  const handlePrevDay = () => {
+    const currentIndex = days.indexOf(selectedDay);
+    const prevIndex = (currentIndex - 1 + days.length) % days.length;
+    setSelectedDay(days[prevIndex]);
+  };
+
+  const handleNextDay = () => {
+    const currentIndex = days.indexOf(selectedDay);
+    const nextIndex = (currentIndex + 1) % days.length;
+    setSelectedDay(days[nextIndex]);
+  };
+
+  // Touch gesture tracking for smooth mobile swipe
+  const touchStartX = React.useRef<number | null>(null);
+  const touchStartY = React.useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+
+    // Detect horizontal swipe with minimal threshold
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 40) {
+      if (deltaX < 0) {
+        handleNextDay();
+      } else {
+        handlePrevDay();
+      }
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+  };
 
   // Modal State for Adding / Editing Sessions
   const [modalOpen, setModalOpen] = useState(false);
@@ -668,9 +710,49 @@ export const TimetableSchedule: React.FC = () => {
       {/* VIEW 1: DIVISION BUILDER (DAY BY DAY VIEW) */}
       {activeMainTab === 'division_builder' && (
         <div className="space-y-4">
+          {/* Mobile Swipe Navigation & Day Switcher (Visible on Mobile/Tablet) */}
+          <div className="flex md:hidden items-center justify-between p-2.5 rounded-xl bg-surface border border-warm-300 shadow-subtle">
+            <button
+              type="button"
+              onClick={handlePrevDay}
+              className="p-2 rounded-lg border border-warm-300 bg-warm-100 hover:bg-warm-200 text-navy-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 transition-all"
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-navy-900 font-mono text-sm tracking-wide">
+                {selectedDay}
+              </span>
+              {selectedDay === todayDayName ? (
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">
+                  TODAY
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDay(todayDayName)}
+                  className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-warm-100 hover:bg-warm-200 text-primary border border-warm-300 transition-colors"
+                >
+                  Jump to Today
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleNextDay}
+              className="p-2 rounded-lg border border-warm-300 bg-warm-100 hover:bg-warm-200 text-navy-800 min-h-[40px] min-w-[40px] flex items-center justify-center active:scale-95 transition-all"
+              aria-label="Next day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
           {/* Day Tabs Bar with variable count badges */}
-          <div className="flex items-center justify-between border-b border-warm-300 pb-2 overflow-x-auto gap-2">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center justify-between border-b border-warm-300 pb-2 overflow-x-auto touch-scroll no-scrollbar gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               {days.map(d => {
                 const dayKey = `${currentDivision?.id}_${d}`;
                 const isHol = dayConfigs[dayKey]?.isWorkingDay === false;
@@ -772,7 +854,11 @@ export const TimetableSchedule: React.FC = () => {
           )}
 
           {/* SESSIONS LIST FOR ACTIVE DAY */}
-          <div className="space-y-3">
+          <div 
+            className="space-y-3 touch-scroll"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
             {activeDaySlots.length === 0 ? (
               <div className="p-12 text-center bg-surface border border-dashed border-warm-300 rounded-xl space-y-3">
                 <Calendar className="h-10 w-10 text-navy-300 mx-auto" />
@@ -955,6 +1041,11 @@ export const TimetableSchedule: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Mobile Swipe Guidance Hint */}
+            <p className="text-[11px] text-navy-400 font-mono text-center md:hidden pt-2 flex items-center justify-center gap-1.5">
+              <span>Swipe screen left or right to switch days</span>
+            </p>
           </div>
         </div>
       )}
@@ -975,7 +1066,7 @@ export const TimetableSchedule: React.FC = () => {
           </div>
 
           {/* Day Selector */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-warm-300">
+          <div className="flex items-center gap-2 overflow-x-auto touch-scroll no-scrollbar pb-2 border-b border-warm-300">
             {days.map(d => (
               <button
                 key={d}

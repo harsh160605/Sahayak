@@ -114,8 +114,8 @@ export const AttendanceHistory: React.FC = () => {
       </div>
 
       {/* Records Table */}
-      <div className="bg-surface rounded-lg border border-warm-300 overflow-hidden shadow-subtle">
-        <table className="w-full text-left text-xs">
+      <div className="bg-surface rounded-lg border border-warm-300 overflow-x-auto touch-scroll shadow-subtle">
+        <table className="w-full text-left text-xs min-w-[640px]">
           <thead className="bg-warm-100 border-b border-warm-300 text-navy-600 font-mono uppercase text-[10px]">
             <tr>
               <th className="p-3">Student Roll No</th>

@@ -43,14 +43,26 @@ export interface Division {
 
 export interface SubjectAllocation {
   id: string;
+  organizationId?: string;
+  organizationCode?: string;
+  departmentId?: string;
+  departmentName?: string;
+  academicYear?: string;
+  yearOfStudy?: YearOfStudy;
+  semester?: string;
   divisionId: string;
   divisionName?: string;
+  batch?: string; // e.g. "All", "Batch 1", "Batch 2", etc.
   courseId: string;
   courseCode: string;
   courseName: string;
   teacherId: string;
   teacherName: string;
+  teacherEmail?: string;
   weeklyHours?: number;
+  assignedBy?: string;
+  assignedAt?: string;
+  status?: 'active' | 'archived';
 }
 
 export interface Organization {
@@ -154,18 +166,53 @@ export interface GeoLocationConfig {
   locationName?: string;
 }
 
+export type LectureConductStatus = 
+  | 'SCHEDULED' 
+  | 'IN_PROGRESS' 
+  | 'COMPLETED' 
+  | 'NOT_CONDUCTED' 
+  | 'CANCELLED' 
+  | 'RESCHEDULED';
+
+export type LectureSessionCategory = 'regular' | 'extra';
+
 export interface AttendanceSession {
   id: string;
   organizationId?: string;
   organizationCode?: string;
+  departmentId?: string;
+  departmentName?: string;
+  academicYear?: string;
+  yearOfStudy?: YearOfStudy;
+  semester?: string;
+  divisionId?: string;
+  divisionName?: string;
+  batch?: string;
   courseId: string;
   courseCode: string;
   courseName: string;
   teacherId: string;
+  teacherName?: string;
   lectureTopic: string;
   startedAt: string;
   endedAt?: string;
   status: 'active' | 'paused' | 'ended';
+  conductStatus?: LectureConductStatus;
+  sessionCategory?: LectureSessionCategory;
+  isExtraLecture?: boolean;
+  timetableSlotId?: string;
+  lectureDate?: string; // Format: YYYY-MM-DD
+  scheduledStartTime?: string; // e.g. "09:15"
+  scheduledEndTime?: string;   // e.g. "10:15"
+  room?: string;
+  cancellationReason?: string;
+  rescheduledTo?: {
+    date: string;
+    startTime: string;
+    endTime: string;
+    room?: string;
+    reason?: string;
+  };
   qrRefreshIntervalSeconds: 3 | 5;
   currentQrToken?: string;
   tokenExpiresAt?: number;

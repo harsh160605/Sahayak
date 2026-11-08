@@ -64,7 +64,7 @@ export const ManageStudents: React.FC = () => {
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-lg bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
         >
           <Plus className="h-4 w-4" />
           <span>Add Student Manually</span>
@@ -101,8 +101,8 @@ export const ManageStudents: React.FC = () => {
       </div>
 
       {/* Roster Table */}
-      <div className="bg-surface rounded-lg border border-warm-300 overflow-hidden shadow-subtle">
-        <table className="w-full text-left text-xs">
+      <div className="bg-surface rounded-lg border border-warm-300 overflow-x-auto touch-scroll shadow-subtle">
+        <table className="w-full text-left text-xs min-w-[620px]">
           <thead className="bg-warm-100 border-b border-warm-300 text-navy-600 font-mono uppercase text-[10px]">
             <tr>
               <th className="p-3">#</th>
