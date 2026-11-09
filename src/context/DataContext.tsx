@@ -134,14 +134,31 @@ interface DataContextType {
   resumeSession: (sessionId: string) => Promise<void>;
   endSession: (sessionId: string) => Promise<void>;
   
-  // Live attendance verification & recording (with Geofencing coordinates)
+  // Live attendance verification & recording (with Geofencing coordinates & Facial Biometrics)
   verifyAndRecordAttendance: (
     token: string, 
     studentUid: string, 
     studentName: string, 
     studentRollNo: string,
-    studentCoords?: { latitude: number; longitude: number }
-  ) => Promise<{ success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string; distanceMeters?: number }>;
+    studentCoords?: { latitude: number; longitude: number },
+    verificationDetails?: {
+      verificationPhoto?: string;
+      faceConfidence?: number;
+      livenessConfirmed?: boolean;
+      auditFlag?: 'VERIFIED_MATCH' | 'SUSPECT_MISMATCH' | 'FLAGGED_FOR_REVIEW';
+    }
+  ) => Promise<{ 
+    success: boolean; 
+    message: string; 
+    courseName?: string; 
+    courseCode?: string;
+    sessionTopic?: string; 
+    markedAt?: string; 
+    distanceMeters?: number;
+    verificationPhoto?: string;
+    faceConfidence?: number;
+    auditFlag?: string;
+  }>;
   
   // Intelligent Timetable Actions
   addTimetableSlot: (slot: Omit<TimetableSlot, 'id'>) => Promise<TimetableSlot>;
@@ -1265,7 +1282,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     studentUid: string, 
     studentName: string, 
     studentRollNo: string,
-    studentCoords?: { latitude: number; longitude: number }
+    studentCoords?: { latitude: number; longitude: number },
+    verificationDetails?: {
+      verificationPhoto?: string;
+      faceConfidence?: number;
+      livenessConfirmed?: boolean;
+      auditFlag?: 'VERIFIED_MATCH' | 'SUSPECT_MISMATCH' | 'FLAGGED_FOR_REVIEW';
+    }
   ) => {
     if (!token || !token.startsWith('SA_TOKEN::')) {
       return { success: false, message: 'Invalid QR code format. Please scan an authentic SmartAttend QR code.' };
@@ -1346,7 +1369,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // 5. Record Attendance
+    // 5. Record Attendance with Biometric Photo Stamp
     const markedAt = new Date().toISOString();
     const recordId = `rec_${sessionId}_${studentUid}`;
     const newRecord: AttendanceRecord = {
@@ -1366,7 +1389,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           longitude: studentCoords.longitude,
           distanceMeters
         }
-      } : {})
+      } : {}),
+      verificationPhoto: verificationDetails?.verificationPhoto,
+      faceConfidence: verificationDetails?.faceConfidence,
+      livenessConfirmed: verificationDetails?.livenessConfirmed ?? true,
+      auditFlag: verificationDetails?.auditFlag || 'VERIFIED_MATCH'
     };
 
     setAttendanceRecords(prev => [newRecord, ...prev]);
@@ -1394,9 +1421,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? `Attendance verified! Physical presence confirmed (${distanceMeters}m from instructor).`
         : 'Attendance recorded successfully!', 
       courseName: `${session.courseCode} — ${session.courseName}`,
+      courseCode: session.courseCode,
       sessionTopic: session.lectureTopic,
       markedAt,
-      distanceMeters
+      distanceMeters,
+      verificationPhoto: verificationDetails?.verificationPhoto,
+      faceConfidence: verificationDetails?.faceConfidence,
+      auditFlag: verificationDetails?.auditFlag
     };
   };
 

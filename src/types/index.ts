@@ -102,6 +102,8 @@ export interface UserProfile {
   semester?: string;
   academicYear?: string;
   avatarUrl?: string;
+  profilePhoto?: string;
+  faceBaselineVector?: number[]; // 64-D biometric baseline vector
   createdAt: string;
   updatedAt: string;
 }
@@ -240,6 +242,10 @@ export interface AttendanceRecord {
     longitude: number;
     distanceMeters?: number;
   };
+  verificationPhoto?: string; // Captured live selfie data URL
+  faceConfidence?: number;    // Biometric match confidence percentage
+  livenessConfirmed?: boolean;
+  auditFlag?: 'VERIFIED_MATCH' | 'SUSPECT_MISMATCH' | 'FLAGGED_FOR_REVIEW';
 }
 
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
