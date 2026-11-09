@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { 
@@ -21,14 +21,18 @@ import {
   Loader2,
   Sparkles,
   Radio,
-  ArrowLeft
+  ArrowLeft,
+  UserCheck,
+  Plus,
+  X,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { formatTime } from '../../lib/utils';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, isLiveFirebaseConfigured } from '../../config/firebase';
-import { AttendanceSession } from '../../types';
+import { AttendanceSession, AttendanceRecord } from '../../types';
 
 export const LiveAttendanceScreen: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -40,11 +44,14 @@ export const LiveAttendanceScreen: React.FC = () => {
     sessions, 
     courses, 
     enrollments, 
-    attendanceRecords, 
+    attendanceRecords,
+    organizationUsers, 
     updateSessionToken, 
     pauseSession, 
     resumeSession, 
-    endSession 
+    endSession,
+    markManualAttendance,
+    removeManualAttendance
   } = useData();
 
   // Resolve session from state or persistent storage
@@ -98,7 +105,156 @@ export const LiveAttendanceScreen: React.FC = () => {
 
   const course = courses.find(c => c.id === session?.courseId);
   const enrolledStudents = enrollments.filter(e => e.courseId === session?.courseId && e.status === 'active');
-  const sessionRecords = attendanceRecords.filter(r => r.sessionId === sessionId);
+
+  // Direct Firestore real-time listener for this session's attendance stream (zero-lag live updates)
+  const [liveStreamRecords, setLiveStreamRecords] = useState<AttendanceRecord[]>([]);
+
+  useEffect(() => {
+    if (!sessionId || !isLiveFirebaseConfigured) return;
+    try {
+      const q = query(collection(db, 'attendanceRecords'), where('sessionId', '==', sessionId));
+      const unsub = onSnapshot(q, (snapshot) => {
+        const records: AttendanceRecord[] = [];
+        snapshot.forEach(docSnap => {
+          records.push({ id: docSnap.id, ...(docSnap.data() as any) });
+        });
+        setLiveStreamRecords(records);
+      }, err => {
+        console.warn('Live attendance direct stream notice:', err);
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Live attendance stream setup notice:', e);
+    }
+  }, [sessionId]);
+
+  // Combined real-time session attendance records (merges context + direct stream + local storage)
+  const sessionRecords = useMemo(() => {
+    const fromContext = attendanceRecords.filter(r => r.sessionId === sessionId);
+    const map = new Map<string, AttendanceRecord>();
+    fromContext.forEach(r => map.set(r.studentUid, r));
+    liveStreamRecords.forEach(r => map.set(r.studentUid, r));
+
+    // Also check localStorage fallback for cross-tab local testing
+    try {
+      const saved = localStorage.getItem('smartattend_attendance_records');
+      if (saved) {
+        const parsed: AttendanceRecord[] = JSON.parse(saved);
+        parsed.filter(r => r.sessionId === sessionId).forEach(r => {
+          if (!map.has(r.studentUid)) map.set(r.studentUid, r);
+        });
+      }
+    } catch {}
+
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()
+    );
+  }, [attendanceRecords, liveStreamRecords, sessionId]);
+
+  // Manual Attendance Modal State
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [manualSearch, setManualSearch] = useState('');
+  const [manualCustomRoll, setManualCustomRoll] = useState('');
+  const [manualCustomName, setManualCustomName] = useState('');
+  const [manualNotice, setManualNotice] = useState<string | null>(null);
+
+  // Complete student roster for this course and division (for manual mark selection)
+  const eligibleRoster = useMemo(() => {
+    const list: { uid: string; name: string; rollNo: string; email?: string }[] = [];
+    const addedUids = new Set<string>();
+
+    // 1. Enrolled students
+    enrolledStudents.forEach(e => {
+      if (!addedUids.has(e.studentUid)) {
+        list.push({
+          uid: e.studentUid,
+          name: e.studentName,
+          rollNo: e.studentRollNo,
+          email: e.studentEmail
+        });
+        addedUids.add(e.studentUid);
+      }
+    });
+
+    // 2. Division students (match divisionId or divisionName)
+    organizationUsers
+      .filter(u => u.role === 'student')
+      .filter(u => 
+        (session?.divisionId && u.divisionId === session.divisionId) ||
+        (session?.divisionName && u.divisionName === session.divisionName)
+      )
+      .forEach(u => {
+        if (!addedUids.has(u.uid)) {
+          list.push({
+            uid: u.uid,
+            name: u.fullName,
+            rollNo: u.studentId || u.rollNo || 'N/A',
+            email: u.email
+          });
+          addedUids.add(u.uid);
+        }
+      });
+
+    // 3. Fallback: all students in organization if roster is small
+    if (list.length === 0) {
+      organizationUsers.filter(u => u.role === 'student').forEach(u => {
+        if (!addedUids.has(u.uid)) {
+          list.push({
+            uid: u.uid,
+            name: u.fullName,
+            rollNo: u.studentId || u.rollNo || 'N/A',
+            email: u.email
+          });
+          addedUids.add(u.uid);
+        }
+      });
+    }
+
+    return list.sort((a, b) => a.rollNo.localeCompare(b.rollNo));
+  }, [enrolledStudents, organizationUsers, session?.divisionId, session?.divisionName]);
+
+  const filteredEligibleRoster = useMemo(() => {
+    if (!manualSearch.trim()) return eligibleRoster;
+    const q = manualSearch.toLowerCase().trim();
+    return eligibleRoster.filter(s => 
+      s.name.toLowerCase().includes(q) || s.rollNo.toLowerCase().includes(q)
+    );
+  }, [eligibleRoster, manualSearch]);
+
+  const handleManualMark = async (student: { uid: string; name: string; rollNo: string }) => {
+    if (!sessionId) return;
+    try {
+      await markManualAttendance(sessionId, student.uid, student.name, student.rollNo, 'Faculty manual override (no phone)');
+      setManualNotice(`Marked ${student.name} (${student.rollNo}) Present.`);
+      setTimeout(() => setManualNotice(null), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to mark attendance.');
+    }
+  };
+
+  const handleManualRemove = async (studentUid: string, studentName: string) => {
+    if (!sessionId) return;
+    try {
+      await removeManualAttendance(sessionId, studentUid);
+      setManualNotice(`Removed attendance for ${studentName}.`);
+      setTimeout(() => setManualNotice(null), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove attendance.');
+    }
+  };
+
+  const handleCustomManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sessionId || !manualCustomRoll.trim() || !manualCustomName.trim()) return;
+    const customUid = `manual_student_${Date.now()}`;
+    await handleManualMark({
+      uid: customUid,
+      name: manualCustomName.trim(),
+      rollNo: manualCustomRoll.trim().toUpperCase()
+    });
+    setManualCustomRoll('');
+    setManualCustomName('');
+  };
 
   // Strict Faculty Authorization: Only session creator or Admin can operate live screen
   const isAuthorizedForSession = currentUser?.role === 'admin' || (session ? session.teacherId === currentUser?.uid : true);
@@ -485,16 +641,28 @@ export const LiveAttendanceScreen: React.FC = () => {
               />
             </div>
 
-            {/* Quick Filter */}
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-navy-400" />
-              <input
-                type="text"
-                placeholder="Filter verified student by name or roll no..."
-                value={searchFilter}
-                onChange={e => setSearchFilter(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-navy-800/80 border border-navy-700 text-xs text-white placeholder-navy-500 focus:outline-none focus:border-teal-400 min-h-[40px]"
-              />
+            {/* Quick Filter & Manual Attendance Trigger */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-navy-400" />
+                <input
+                  type="text"
+                  placeholder="Filter verified student by name or roll no..."
+                  value={searchFilter}
+                  onChange={e => setSearchFilter(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-navy-800/80 border border-navy-700 text-xs text-white placeholder-navy-500 focus:outline-none focus:border-teal-400 min-h-[40px]"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setManualModalOpen(true)}
+                className="w-full py-2.5 px-3 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 active:bg-teal-500/35 text-teal-300 border border-teal-500/30 text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-subtle cursor-pointer"
+                title="Mark students present manually (for dead phone, no phone, or offline)"
+              >
+                <UserCheck className="h-4 w-4 text-teal-400 shrink-0" />
+                <span>Mark Attendance Manually (No Phone / Offline)</span>
+              </button>
             </div>
           </div>
 
@@ -512,29 +680,52 @@ export const LiveAttendanceScreen: React.FC = () => {
                   ? `${record.studentName.slice(0, 1)}*** ${record.studentName.split(' ')[1] || ''}` 
                   : record.studentName;
 
+                const isManual = record.source === 'manual_teacher';
+
                 return (
                   <div
                     key={record.id}
                     className="p-3 rounded-lg bg-navy-800/90 border border-navy-700 flex items-center justify-between text-xs transition-all duration-200 hover:border-teal-500/40"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-6 h-6 rounded-full bg-teal-500/20 text-teal-300 flex items-center justify-center font-mono font-bold text-xs">
+                      <div className="w-6 h-6 rounded-full bg-teal-500/20 text-teal-300 flex items-center justify-center font-mono font-bold text-xs shrink-0">
                         {index + 1}
                       </div>
                       <div>
-                        <p className="font-semibold text-white">{displayName}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-semibold text-white">{displayName}</p>
+                          {isManual && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              MANUAL
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-navy-400 font-mono">{record.studentRollNo}</p>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-xs font-mono text-teal-400">
-                        {formatTime(record.markedAt)}
-                      </span>
-                      <p className="text-xs font-mono text-emerald-400 font-semibold flex items-center gap-1 justify-end">
-                        <CheckCircle className="h-3 w-3 text-emerald-400" />
-                        <span>Verified</span>
-                      </p>
+                    <div className="flex items-center gap-2.5 text-right">
+                      <div>
+                        <span className="text-xs font-mono text-teal-400 block">
+                          {formatTime(record.markedAt)}
+                        </span>
+                        <p className={`text-xs font-mono font-semibold flex items-center gap-1 justify-end ${
+                          isManual ? 'text-amber-300' : 'text-emerald-400'
+                        }`}>
+                          <CheckCircle className="h-3 w-3" />
+                          <span>{isManual ? 'Manual Pass' : 'Verified'}</span>
+                        </p>
+                      </div>
+                      {isManual && (
+                        <button
+                          type="button"
+                          onClick={() => handleManualRemove(record.studentUid, record.studentName)}
+                          className="p-1 rounded text-navy-400 hover:text-red-400 hover:bg-navy-700/60 transition-colors"
+                          title="Undo / Remove manual attendance"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -543,6 +734,152 @@ export const LiveAttendanceScreen: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Manual Attendance Modal (For students without phones or facing issues) */}
+      {manualModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-navy-900 border border-navy-700 rounded-2xl shadow-elevated w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden text-white">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-navy-800 flex items-center justify-between shrink-0 bg-navy-950/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                  <UserCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Manual Attendance Override
+                  </h3>
+                  <p className="text-xs text-navy-400">
+                    {course?.courseCode || session.courseCode} &bull; {session.divisionName || 'Class'} &bull; For students unable to scan
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManualModalOpen(false)}
+                className="p-1.5 rounded-lg text-navy-400 hover:text-white hover:bg-navy-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {manualNotice && (
+              <div className="p-3 bg-emerald-500/20 border-b border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
+                <span>{manualNotice}</span>
+              </div>
+            )}
+
+            {/* Filter Search */}
+            <div className="p-4 border-b border-navy-800 shrink-0">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-navy-400" />
+                <input
+                  type="text"
+                  placeholder="Search student by name or roll number..."
+                  value={manualSearch}
+                  onChange={e => setManualSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-navy-800/80 border border-navy-700 text-xs text-white placeholder-navy-500 focus:outline-none focus:border-teal-400"
+                />
+              </div>
+            </div>
+
+            {/* Student Roster List */}
+            <div className="p-4 overflow-y-auto space-y-2 flex-1 touch-scroll">
+              {filteredEligibleRoster.length === 0 ? (
+                <div className="py-8 text-center text-navy-500 text-xs font-mono">
+                  No students found matching "{manualSearch}".
+                </div>
+              ) : (
+                filteredEligibleRoster.map(student => {
+                  const isPresent = sessionRecords.some(r => r.studentUid === student.uid);
+                  const record = sessionRecords.find(r => r.studentUid === student.uid);
+
+                  return (
+                    <div
+                      key={student.uid}
+                      className="p-3 rounded-lg bg-navy-800/60 border border-navy-700 flex items-center justify-between text-xs hover:border-navy-600 transition-colors"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white">{student.name}</span>
+                          <span className="font-mono text-teal-400 text-[11px] font-bold">
+                            {student.rollNo}
+                          </span>
+                        </div>
+                        {record && (
+                          <span className="text-[10px] text-navy-400 font-mono">
+                            Marked at {formatTime(record.markedAt)} ({record.source === 'qr_scan' ? 'Dynamic QR' : 'Manual'})
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        {isPresent ? (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold font-mono">
+                              <CheckCircle className="h-3 w-3" />
+                              <span>Present</span>
+                            </span>
+                            {record?.source === 'manual_teacher' && (
+                              <button
+                                type="button"
+                                onClick={() => handleManualRemove(student.uid, student.name)}
+                                className="px-2 py-1 rounded text-[10px] text-navy-400 hover:text-red-400 hover:bg-navy-700/60 border border-transparent hover:border-red-500/30 transition-colors"
+                              >
+                                Undo
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleManualMark(student)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-bold transition-all shadow-subtle active:scale-95 cursor-pointer"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            <span>Mark Present</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Quick Add Custom / Unregistered Student */}
+            <div className="p-4 bg-navy-950/70 border-t border-navy-800 shrink-0">
+              <span className="text-[11px] font-mono text-navy-400 font-semibold block mb-2">
+                Quick Mark by Roll No (Unlisted / Guest Student):
+              </span>
+              <form onSubmit={handleCustomManualSubmit} className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Roll No (e.g. 22CS099)"
+                  value={manualCustomRoll}
+                  onChange={e => setManualCustomRoll(e.target.value)}
+                  className="w-36 px-3 py-1.5 rounded-lg bg-navy-800 border border-navy-700 text-xs font-mono uppercase text-white focus:outline-none focus:border-teal-400"
+                />
+                <input
+                  type="text"
+                  placeholder="Student Full Name"
+                  value={manualCustomName}
+                  onChange={e => setManualCustomName(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-navy-800 border border-navy-700 text-xs text-white focus:outline-none focus:border-teal-400"
+                />
+                <button
+                  type="submit"
+                  disabled={!manualCustomRoll.trim() || !manualCustomName.trim()}
+                  className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white text-xs font-bold shrink-0 transition-colors cursor-pointer"
+                >
+                  Mark Present
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

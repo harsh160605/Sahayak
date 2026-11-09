@@ -140,9 +140,19 @@ interface DataContextType {
     token: string, 
     studentUid: string, 
     studentName: string, 
-    studentRollNo: string,
+    studentRollNo: string, 
     studentCoords?: { latitude: number; longitude: number }
   ) => Promise<{ success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string; distanceMeters?: number }>;
+  
+  // Faculty Manual Attendance Override (Offline / Battery Dead / No Smartphone)
+  markManualAttendance: (
+    sessionId: string,
+    studentUid: string,
+    studentName: string,
+    studentRollNo: string,
+    reason?: string
+  ) => Promise<AttendanceRecord>;
+  removeManualAttendance: (sessionId: string, studentUid: string) => Promise<void>;
   
   // Intelligent Timetable Actions
   addTimetableSlot: (slot: Omit<TimetableSlot, 'id'>) => Promise<TimetableSlot>;
@@ -533,6 +543,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Synchronize cross-tab and cross-window local state changes
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'smartattend_attendance_records' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setAttendanceRecords(parsed);
+        } catch {}
+      }
+      if (e.key === 'smartattend_sessions' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setSessions(parsed);
+        } catch {}
+      }
       if (e.key === 'smartattend_device_requests' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
@@ -1474,6 +1496,124 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       markedAt,
       distanceMeters
     };
+  };
+
+  // Faculty Manual Attendance Override (For students with dead phone battery / no phone / technical difficulty)
+  const markManualAttendance = async (
+    sessionId: string,
+    studentUid: string,
+    studentName: string,
+    studentRollNo: string,
+    reason?: string
+  ): Promise<AttendanceRecord> => {
+    const session = sessions.find(s => s.id === sessionId);
+    const markedAt = new Date().toISOString();
+    const recordId = `rec_${sessionId}_${studentUid}`;
+
+    // If student already has a record in this session
+    const existing = attendanceRecords.find(r => r.sessionId === sessionId && r.studentUid === studentUid);
+    if (existing) {
+      if (existing.status !== 'present') {
+        const updatedRecord: AttendanceRecord = {
+          ...existing,
+          status: 'present',
+          source: 'manual_teacher',
+          markedAt
+        };
+        setAttendanceRecords(prev => prev.map(r => r.id === existing.id ? updatedRecord : r));
+        try {
+          const savedRecs = localStorage.getItem('smartattend_attendance_records');
+          const list: AttendanceRecord[] = savedRecs ? JSON.parse(savedRecs) : [];
+          localStorage.setItem('smartattend_attendance_records', JSON.stringify(list.map(r => r.id === existing.id ? updatedRecord : r)));
+        } catch {}
+        if (isLiveFirebaseConfigured) {
+          try {
+            await updateDoc(doc(db, 'attendanceRecords', existing.id), updatedRecord as any);
+          } catch (err) {
+            console.warn('Firestore markManualAttendance update error:', err);
+          }
+        }
+        return updatedRecord;
+      }
+      return existing;
+    }
+
+    const newRecord: AttendanceRecord = {
+      id: recordId,
+      sessionId,
+      courseId: session?.courseId || '',
+      studentUid,
+      studentName,
+      studentRollNo,
+      markedAt,
+      status: 'present',
+      source: 'manual_teacher',
+      verified: true
+    };
+
+    setAttendanceRecords(prev => [newRecord, ...prev]);
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s));
+
+    try {
+      const savedRecs = localStorage.getItem('smartattend_attendance_records');
+      const list: AttendanceRecord[] = savedRecs ? JSON.parse(savedRecs) : [];
+      localStorage.setItem('smartattend_attendance_records', JSON.stringify([newRecord, ...list]));
+
+      const savedSess = localStorage.getItem('smartattend_sessions');
+      const sList: AttendanceSession[] = savedSess ? JSON.parse(savedSess) : [];
+      localStorage.setItem('smartattend_sessions', JSON.stringify(
+        sList.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s)
+      ));
+    } catch {}
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'attendanceRecords', recordId), newRecord);
+        if (session) {
+          await updateDoc(doc(db, 'attendanceSessions', sessionId), {
+            totalPresent: (session.totalPresent || 0) + 1
+          });
+        }
+      } catch (err) {
+        console.warn('Firestore write error in markManualAttendance:', err);
+      }
+    }
+
+    return newRecord;
+  };
+
+  const removeManualAttendance = async (sessionId: string, studentUid: string): Promise<void> => {
+    const existing = attendanceRecords.find(r => r.sessionId === sessionId && r.studentUid === studentUid);
+    if (!existing) return;
+
+    setAttendanceRecords(prev => prev.filter(r => r.id !== existing.id));
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: Math.max(0, (s.totalPresent || 1) - 1) } : s));
+
+    try {
+      const savedRecs = localStorage.getItem('smartattend_attendance_records');
+      const list: AttendanceRecord[] = savedRecs ? JSON.parse(savedRecs) : [];
+      localStorage.setItem('smartattend_attendance_records', JSON.stringify(list.filter(r => r.id !== existing.id)));
+
+      const savedSess = localStorage.getItem('smartattend_sessions');
+      const sList: AttendanceSession[] = savedSess ? JSON.parse(savedSess) : [];
+      localStorage.setItem('smartattend_sessions', JSON.stringify(
+        sList.map(s => s.id === sessionId ? { ...s, totalPresent: Math.max(0, (s.totalPresent || 1) - 1) } : s)
+      ));
+    } catch {}
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await deleteDoc(doc(db, 'attendanceRecords', existing.id));
+        const session = sessions.find(s => s.id === sessionId);
+        if (session) {
+          await updateDoc(doc(db, 'attendanceSessions', sessionId), {
+            totalPresent: Math.max(0, (session.totalPresent || 1) - 1)
+          });
+        }
+      } catch (err) {
+        console.warn('Firestore delete error in removeManualAttendance:', err);
+      }
+    }
   };
 
   // Timetable slot management
@@ -2476,7 +2616,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const scopedEnrollments = enrollments.filter(e => scopedCourseIds.has(e.courseId));
   const scopedRequests = requests.filter(r => isOrgMatch(r.organizationId, r.organizationCode) || scopedCourseIds.has(r.courseId));
   const scopedSessions = sessions.filter(s => isOrgMatch(s.organizationId, s.organizationCode) || scopedCourseIds.has(s.courseId));
-  const scopedAttendanceRecords = attendanceRecords.filter(r => scopedCourseIds.has(r.courseId));
+  const scopedSessionIds = new Set(scopedSessions.map(s => s.id));
+  const scopedAttendanceRecords = attendanceRecords.filter(r => 
+    scopedCourseIds.has(r.courseId) || (r.sessionId && scopedSessionIds.has(r.sessionId))
+  );
   const scopedTimetable = timetable.filter(t => isOrgMatch(t.organizationId, t.organizationCode));
   const scopedUsers = organizationUsers.filter(u => isOrgMatch(u.organizationId, u.organizationCode));
   const scopedDepartments = departments.filter(d => isOrgMatch(d.organizationId, d.organizationCode));
@@ -2556,7 +2699,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         approveDeviceChange,
         rejectDeviceChange,
         resetStudentDevice,
-        bindCurrentDevice
+        bindCurrentDevice,
+        markManualAttendance,
+        removeManualAttendance
       }}
     >
       {children}
