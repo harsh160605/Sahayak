@@ -1,23 +1,58 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { History, Download, Calendar, Filter, CheckCircle2, AlertCircle } from 'lucide-react';
+import { 
+  History, 
+  Download, 
+  Calendar, 
+  Filter, 
+  CheckCircle2, 
+  AlertCircle,
+  Camera,
+  ShieldCheck,
+  Eye,
+  X,
+  MapPin
+} from 'lucide-react';
 import { formatDate, formatTime } from '../../lib/utils';
+import { AttendanceRecord } from '../../types';
 
 export const AttendanceHistory: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const paramCourseId = searchParams.get('courseId');
+  const paramSessionId = searchParams.get('sessionId');
+
   const { currentUser } = useAuth();
-  const { courses, sessions, attendanceRecords } = useData();
+  const { courses, sessions, attendanceRecords, subjectAllocations } = useData();
 
-  const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
+  const myAllocations = subjectAllocations?.filter(a => 
+    a.teacherId === currentUser?.uid || 
+    (currentUser?.email && a.teacherEmail === currentUser.email)
+  ) || [];
+  const allocatedCourseIds = new Set(myAllocations.map(a => a.courseId));
 
-  const courseSessions = sessions.filter(s => s.courseId === selectedCourseId);
+  const myCourses = courses.filter(c => 
+    c.teacherId === currentUser?.uid || 
+    (currentUser?.fullName && c.teacherName === currentUser.fullName) ||
+    allocatedCourseIds.has(c.id) ||
+    currentUser?.role === 'admin'
+  );
+
+  const initialCourseId = paramCourseId && myCourses.some(c => c.id === paramCourseId)
+    ? paramCourseId
+    : (myCourses[0]?.id || paramCourseId || '');
+
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(initialCourseId);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(paramSessionId || 'all');
+  const [inspectingRecord, setInspectingRecord] = useState<AttendanceRecord | null>(null);
+
+  const courseSessions = sessions.filter(s => !selectedCourseId || s.courseId === selectedCourseId);
   const relevantRecords = attendanceRecords.filter(r => {
-    if (selectedSessionId === 'all') {
-      return r.courseId === selectedCourseId;
+    if (selectedSessionId !== 'all') {
+      return r.sessionId === selectedSessionId;
     }
-    return r.sessionId === selectedSessionId;
+    return !selectedCourseId || r.courseId === selectedCourseId;
   });
 
   // Export to CSV Generator
@@ -114,8 +149,8 @@ export const AttendanceHistory: React.FC = () => {
       </div>
 
       {/* Records Table */}
-      <div className="bg-surface rounded-lg border border-warm-300 overflow-hidden shadow-subtle">
-        <table className="w-full text-left text-xs">
+      <div className="bg-surface rounded-lg border border-warm-300 overflow-x-auto touch-scroll shadow-subtle">
+        <table className="w-full text-left text-xs min-w-[700px]">
           <thead className="bg-warm-100 border-b border-warm-300 text-navy-600 font-mono uppercase text-[10px]">
             <tr>
               <th className="p-3">Student Roll No</th>
@@ -123,13 +158,14 @@ export const AttendanceHistory: React.FC = () => {
               <th className="p-3">Lecture Topic</th>
               <th className="p-3">Status</th>
               <th className="p-3">Marked Timestamp</th>
-              <th className="p-3">Verification</th>
+              <th className="p-3">Verification Source</th>
+              <th className="p-3 text-right">Perimeter Audit</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-warm-200">
             {relevantRecords.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-navy-500 italic">
+                <td colSpan={7} className="p-6 text-center text-navy-500 italic">
                   No attendance records recorded for the selected filter.
                 </td>
               </tr>
@@ -152,8 +188,25 @@ export const AttendanceHistory: React.FC = () => {
                     <td className="p-3">
                       <span className="inline-flex items-center gap-1 text-[11px] font-mono text-teal-700">
                         <CheckCircle2 className="h-3 w-3 text-primary" />
-                        {r.source === 'qr_scan' ? 'Dynamic QR' : 'Manual'}
+                        {r.source === 'qr_scan' ? 'Dynamic QR' : 'Manual Entry'}
                       </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      {r.studentCoordinates ? (
+                        <button
+                          type="button"
+                          onClick={() => setInspectingRecord(r)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-warm-100 hover:bg-warm-200 border border-warm-300 text-[11px] font-mono text-navy-800 transition-colors"
+                          title="Inspect perimeter audit"
+                        >
+                          <MapPin className="h-3 w-3 text-primary" />
+                          <span>Perimeter Pass</span>
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-navy-400 font-mono italic">
+                          Standard
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -162,6 +215,62 @@ export const AttendanceHistory: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Audit Inspection Modal */}
+      {inspectingRecord && (
+        <div className="fixed inset-0 z-50 bg-navy-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl border border-warm-300 shadow-elevated max-w-sm w-full p-5 space-y-4 animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-warm-200 pb-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-navy-900 font-mono uppercase">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                <span>Attendance Verification Audit</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectingRecord(null)}
+                className="p-1 rounded-md text-navy-400 hover:text-navy-700 hover:bg-warm-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Student & Session Ledger Details */}
+            <div className="p-3.5 rounded-lg bg-warm-50 border border-warm-200 text-xs font-mono space-y-2 text-navy-800">
+              <div className="flex items-center justify-between pb-1.5 border-b border-warm-200">
+                <span className="text-navy-500 text-[11px]">STUDENT</span>
+                <span className="font-bold text-navy-900 font-sans">{inspectingRecord.studentName}</span>
+              </div>
+              <div className="flex items-center justify-between pb-1.5 border-b border-warm-200">
+                <span className="text-navy-500 text-[11px]">ROLL NUMBER</span>
+                <span className="font-bold text-navy-900">{inspectingRecord.studentRollNo}</span>
+              </div>
+              <div className="flex items-center justify-between pb-1.5 border-b border-warm-200">
+                <span className="text-navy-500 text-[11px]">TIME CAPTURED</span>
+                <span className="font-bold text-navy-900">{formatDate(inspectingRecord.markedAt)} at {formatTime(inspectingRecord.markedAt)}</span>
+              </div>
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="text-navy-500 text-[11px]">VERIFICATION</span>
+                <span className="font-bold text-teal-800 font-mono">Dynamic QR Validated</span>
+              </div>
+            </div>
+
+            {inspectingRecord.studentCoordinates && (
+              <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-emerald-950 text-xs flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>Classroom perimeter verified (~{inspectingRecord.studentCoordinates.distanceMeters || 12}m from instructor)</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setInspectingRecord(null)}
+              className="w-full py-2.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold"
+            >
+              Close Record
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

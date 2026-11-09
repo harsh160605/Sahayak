@@ -18,16 +18,39 @@ import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useData } from '../context/DataContext';
 
-export const Sidebar: React.FC = () => {
+interface NavItem {
+  label: string;
+  to: string;
+  icon: any;
+  highlight?: boolean;
+  badge?: number;
+}
+
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const { currentUser, logout, switchUserRole } = useAuth();
   const { requests } = useData();
 
   if (!currentUser) return null;
 
   const isTeacher = currentUser.role === 'teacher';
+  const isAdmin = currentUser.role === 'admin';
   const pendingRequestsCount = requests.filter(r => r.teacherId === currentUser.uid && r.status === 'pending').length;
 
-  const teacherNavItems = [
+  const adminNavItems: NavItem[] = [
+    { label: 'Admin Console', to: '/admin', icon: LayoutDashboard },
+    { label: 'Institute Roster', to: '/institute-directory', icon: Users },
+    { label: 'Master Timetable', to: '/admin/timetable', icon: Calendar },
+    { label: 'Course Catalog', to: '/teacher/courses', icon: BookOpen },
+    { label: 'Take Attendance', to: '/teacher/take-attendance', icon: QrCode },
+    { label: 'Attendance Reports', to: '/teacher/reports', icon: BarChart3 },
+    { label: 'Profile', to: '/profile', icon: User },
+  ];
+
+  const teacherNavItems: NavItem[] = [
     { label: 'Dashboard', to: '/teacher', icon: LayoutDashboard },
     { label: 'My Courses', to: '/teacher/courses', icon: BookOpen },
     { label: 'Class Timetable', to: '/teacher/timetable', icon: Calendar },
@@ -41,20 +64,22 @@ export const Sidebar: React.FC = () => {
       icon: UserCheck, 
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined 
     },
+    { label: 'Institute Directory', to: '/institute-directory', icon: Users },
     { label: 'Profile', to: '/profile', icon: User },
   ];
 
-  const studentNavItems = [
+  const studentNavItems: NavItem[] = [
     { label: 'Dashboard', to: '/student', icon: LayoutDashboard },
     { label: 'Class Timetable', to: '/student/timetable', icon: Calendar },
     { label: 'My Courses', to: '/student/courses', icon: BookOpen },
     { label: 'Scan QR Attendance', to: '/student/scan', icon: QrCode, highlight: true },
     { label: 'Attendance History', to: '/student/history', icon: History },
     { label: 'Join a Course', to: '/student/join', icon: GraduationCap },
+    { label: 'Institute Directory', to: '/institute-directory', icon: Users },
     { label: 'Profile', to: '/profile', icon: User },
   ];
 
-  const navItems = isTeacher ? teacherNavItems : studentNavItems;
+  const navItems: NavItem[] = isAdmin ? adminNavItems : isTeacher ? teacherNavItems : studentNavItems;
 
   return (
     <aside className="w-64 bg-surface border-r border-warm-300 min-h-screen flex flex-col justify-between shrink-0 select-none">
@@ -68,28 +93,41 @@ export const Sidebar: React.FC = () => {
             <div>
               <span className="font-semibold text-navy-900 tracking-tight text-base flex items-center gap-1.5">
                 SmartAttend
-                <span className="text-[10px] font-mono tracking-widest font-medium uppercase px-1.5 py-0.5 rounded bg-warm-200 text-navy-700 border border-warm-300">
-                  {isTeacher ? 'FACULTY' : 'STUDENT'}
+                <span className={`text-[10px] font-mono tracking-widest font-medium uppercase px-1.5 py-0.5 rounded border ${
+                  isAdmin 
+                    ? 'bg-amber-100 text-amber-900 border-amber-300' 
+                    : isTeacher 
+                      ? 'bg-warm-200 text-navy-700 border-warm-300' 
+                      : 'bg-teal-100 text-teal-800 border-teal-300'
+                }`}>
+                  {isAdmin ? 'ADMIN' : isTeacher ? 'FACULTY' : 'STUDENT'}
                 </span>
               </span>
-              <p className="text-[11px] text-navy-500 font-mono">Academic Portal</p>
+              <p className="text-[11px] text-navy-500 font-mono truncate max-w-[130px]">
+                {currentUser.organizationCode ? `Org: ${currentUser.organizationCode}` : 'Academic Portal'}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* User Card Mini */}
-        <div className="px-4 py-4 m-3 rounded-lg bg-warm-100 border border-warm-300/80">
+        {/* User Card Mini with Organization Name */}
+        <div className="px-4 py-3 m-3 rounded-lg bg-warm-100 border border-warm-300/80 space-y-1.5">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-navy-800 text-warm-50 flex items-center justify-center font-semibold text-xs tracking-wide">
+            <div className="w-8 h-8 rounded-full bg-navy-800 text-warm-50 flex items-center justify-center font-semibold text-xs tracking-wide shrink-0">
               {currentUser.fullName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-navy-900 truncate">{currentUser.fullName}</p>
-              <p className="text-[11px] text-navy-500 font-mono truncate">
+              <p className="text-[10px] text-navy-500 font-mono truncate">
                 {isTeacher ? currentUser.facultyId : currentUser.studentId}
               </p>
             </div>
           </div>
+          {currentUser.organizationName && (
+            <div className="pt-1.5 border-t border-warm-200 text-[10px] text-teal-800 font-mono font-medium truncate">
+              🏛️ {currentUser.organizationName}
+            </div>
+          )}
         </div>
 
         {/* Navigation Items */}
@@ -101,9 +139,10 @@ export const Sidebar: React.FC = () => {
                 key={item.to}
                 to={item.to}
                 end={item.to === '/teacher' || item.to === '/student'}
+                onClick={onClose}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center justify-between px-3 py-2 text-xs font-medium rounded-md transition-colors",
+                    "flex items-center justify-between px-3 py-2.5 min-h-[42px] text-xs font-medium rounded-md transition-colors",
                     isActive
                       ? "bg-navy-900 text-surface shadow-subtle"
                       : "text-navy-700 hover:text-navy-900 hover:bg-warm-200/70",
@@ -143,10 +182,13 @@ export const Sidebar: React.FC = () => {
         </button>
 
         <button
-          onClick={logout}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-navy-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+          onClick={() => {
+            onClose?.();
+            logout();
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[44px] text-xs font-medium text-navy-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
         >
-          <LogOut className="h-4 w-4" strokeWidth={1.8} />
+          <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />
           <span>Sign Out</span>
         </button>
       </div>

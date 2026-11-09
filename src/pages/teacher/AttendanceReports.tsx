@@ -16,9 +16,20 @@ import {
 
 export const AttendanceReports: React.FC = () => {
   const { currentUser } = useAuth();
-  const { courses, sessions, enrollments, attendanceRecords } = useData();
+  const { courses, sessions, enrollments, attendanceRecords, subjectAllocations } = useData();
 
-  const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
+  const myAllocations = subjectAllocations?.filter(a => 
+    a.teacherId === currentUser?.uid || 
+    (currentUser?.email && a.teacherEmail === currentUser.email)
+  ) || [];
+  const allocatedCourseIds = new Set(myAllocations.map(a => a.courseId));
+
+  const myCourses = courses.filter(c => 
+    c.teacherId === currentUser?.uid || 
+    (currentUser?.fullName && c.teacherName === currentUser.fullName) ||
+    allocatedCourseIds.has(c.id) ||
+    currentUser?.role === 'admin'
+  );
   const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
   const [defaulterThreshold, setDefaulterThreshold] = useState<number>(75);
 
@@ -31,8 +42,8 @@ export const AttendanceReports: React.FC = () => {
     const attended = attendanceRecords.filter(
       r => r.courseId === selectedCourseId && r.studentUid === student.studentUid && r.status === 'present'
     ).length;
-    const totalEligible = Math.max(courseSessions.length, 1);
-    const percentage = Math.round((attended / totalEligible) * 100);
+    const totalEligible = Math.max(courseSessions.length, attended, 1);
+    const percentage = Math.min(100, Math.max(0, Math.round((attended / totalEligible) * 100)));
 
     return {
       ...student,
@@ -161,8 +172,8 @@ export const AttendanceReports: React.FC = () => {
           </div>
         </div>
 
-        <div className="border border-warm-200 rounded-md overflow-hidden">
-          <table className="w-full text-left text-xs">
+        <div className="border border-warm-200 rounded-md overflow-x-auto touch-scroll">
+          <table className="w-full text-left text-xs min-w-[560px]">
             <thead className="bg-warm-100 border-b border-warm-200 text-navy-600 font-mono uppercase text-[10px]">
               <tr>
                 <th className="p-3">Roll No</th>

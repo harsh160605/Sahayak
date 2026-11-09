@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { Users, Search, Plus, Trash2, CheckCircle, Clock } from 'lucide-react';
+import { Users, Search, Plus, Trash2, CheckCircle, Clock, Smartphone, RotateCcw } from 'lucide-react';
 import { formatDate } from '../../lib/utils';
 
 export const ManageStudents: React.FC = () => {
   const { currentUser } = useAuth();
-  const { courses, enrollments, manuallyEnrollStudent, removeStudentFromCourse } = useData();
+  const { courses, enrollments, organizationUsers, manuallyEnrollStudent, removeStudentFromCourse, resetStudentDevice } = useData();
 
   const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
   const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
@@ -64,7 +64,7 @@ export const ManageStudents: React.FC = () => {
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-lg bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
         >
           <Plus className="h-4 w-4" />
           <span>Add Student Manually</span>
@@ -101,14 +101,15 @@ export const ManageStudents: React.FC = () => {
       </div>
 
       {/* Roster Table */}
-      <div className="bg-surface rounded-lg border border-warm-300 overflow-hidden shadow-subtle">
-        <table className="w-full text-left text-xs">
+      <div className="bg-surface rounded-lg border border-warm-300 overflow-x-auto touch-scroll shadow-subtle">
+        <table className="w-full text-left text-xs min-w-[720px]">
           <thead className="bg-warm-100 border-b border-warm-300 text-navy-600 font-mono uppercase text-[10px]">
             <tr>
               <th className="p-3">#</th>
               <th className="p-3">Student Name</th>
               <th className="p-3">Roll Number</th>
               <th className="p-3">Email Address</th>
+              <th className="p-3">Registered Device</th>
               <th className="p-3">Enrolled Date</th>
               <th className="p-3 text-right">Actions</th>
             </tr>
@@ -116,33 +117,70 @@ export const ManageStudents: React.FC = () => {
           <tbody className="divide-y divide-warm-200">
             {filteredEnrollments.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-navy-500 italic">
+                <td colSpan={7} className="p-6 text-center text-navy-500 italic">
                   No students currently enrolled in this course roster.
                 </td>
               </tr>
             ) : (
-              filteredEnrollments.map((student, idx) => (
-                <tr key={student.id} className="hover:bg-warm-50 transition-colors">
-                  <td className="p-3 font-mono text-navy-400 text-[11px]">{idx + 1}</td>
-                  <td className="p-3 font-semibold text-navy-900">{student.studentName}</td>
-                  <td className="p-3 font-mono text-navy-700 font-medium">{student.studentRollNo}</td>
-                  <td className="p-3 font-mono text-navy-500">{student.studentEmail}</td>
-                  <td className="p-3 font-mono text-navy-500">{formatDate(student.enrolledAt)}</td>
-                  <td className="p-3 text-right">
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`Remove ${student.studentName} from this course? Historical attendance records will remain preserved.`)) {
-                          removeStudentFromCourse(selectedCourseId, student.studentUid);
-                        }
-                      }}
-                      className="p-1.5 rounded text-navy-400 hover:text-red-700 hover:bg-red-50 transition-colors"
-                      title="Remove from course roster"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
+              filteredEnrollments.map((student, idx) => {
+                const studentProfile = organizationUsers.find(u => u.uid === student.studentUid);
+                return (
+                  <tr key={student.id} className="hover:bg-warm-50 transition-colors">
+                    <td className="p-3 font-mono text-navy-400 text-[11px]">{idx + 1}</td>
+                    <td className="p-3 font-semibold text-navy-900">{student.studentName}</td>
+                    <td className="p-3 font-mono text-navy-700 font-medium">{student.studentRollNo}</td>
+                    <td className="p-3 font-mono text-navy-500">{student.studentEmail}</td>
+                    <td className="p-3">
+                      {studentProfile?.boundDeviceId ? (
+                        <div className="flex items-center gap-1.5">
+                          <Smartphone className="h-3.5 w-3.5 text-teal-700 shrink-0" />
+                          <div className="truncate max-w-[150px]">
+                            <span className="font-mono text-[11px] text-navy-800 font-medium block truncate" title={studentProfile.boundDeviceName || 'Registered Phone'}>
+                              {studentProfile.boundDeviceName || 'Registered Phone'}
+                            </span>
+                            <span className="block text-[10px] text-teal-700 font-mono">1-Device Locked</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] font-mono text-navy-400 italic">
+                          Unbound (Auto-locks on 1st login)
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-3 font-mono text-navy-500">{formatDate(student.enrolledAt)}</td>
+                    <td className="p-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {studentProfile?.boundDeviceId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Reset device authorization for ${student.studentName}? This unlinks their current device so they can bind a new phone.`)) {
+                                resetStudentDevice(student.studentUid, currentUser?.uid, currentUser?.fullName);
+                              }
+                            }}
+                            className="p-1.5 rounded text-navy-500 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                            title="Reset Bound Device"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Remove ${student.studentName} from this course? Historical attendance records will remain preserved.`)) {
+                              removeStudentFromCourse(selectedCourseId, student.studentUid);
+                            }
+                          }}
+                          className="p-1.5 rounded text-navy-400 hover:text-red-700 hover:bg-red-50 transition-colors"
+                          title="Remove from course roster"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
