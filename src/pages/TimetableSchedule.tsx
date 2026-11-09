@@ -501,7 +501,7 @@ export const TimetableSchedule: React.FC = () => {
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-primary flex items-center gap-1">
               <Building className="h-3.5 w-3.5" />
-              <span>ACADEMIC SCHEDULE & ROUTINE ENGINE</span>
+              <span>{isStudent ? 'STUDENT CLASS TIMETABLE' : 'ACADEMIC SCHEDULE & ROUTINE ENGINE'}</span>
             </span>
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
               isDivisionPublished 
@@ -514,12 +514,12 @@ export const TimetableSchedule: React.FC = () => {
 
           <h1 className="text-2xl font-bold tracking-tight text-navy-900 flex items-center gap-2.5">
             <Calendar className="h-6 w-6 text-primary" />
-            <span>Master Timetable Builder</span>
+            <span>{isStudent ? 'Class Schedule' : 'Master Timetable Builder'}</span>
           </h1>
 
           <p className="text-xs text-navy-600 mt-1">
             {isStudent 
-              ? `Personalized schedule for ${currentUser?.department} &bull; ${currentUser?.divisionName || 'Your Division'}`
+              ? `Personalized schedule for ${currentUser?.department || 'Department'} • ${currentUser?.divisionName || currentDivision?.name || 'Your Division'}`
               : `Dynamic daily lecture, lab practical, and break scheduler with cross-institute faculty conflict prevention.`}
           </p>
         </div>
@@ -611,8 +611,8 @@ export const TimetableSchedule: React.FC = () => {
         </div>
       )}
 
-      {/* HIERARCHY SELECTOR PANEL (Institute -> Dept -> Year -> Division) */}
-      {activeMainTab !== 'personal_agenda' && (
+      {/* HIERARCHY SELECTOR PANEL (Institute -> Dept -> Year -> Division) - Admin/Faculty Only */}
+      {!isStudent && activeMainTab !== 'personal_agenda' && (
         <div className="p-4 rounded-xl bg-surface border border-warm-300 shadow-subtle space-y-3">
           <div className="flex items-center justify-between border-b border-warm-200 pb-2">
             <span className="text-[11px] font-mono font-bold uppercase text-navy-600 flex items-center gap-1.5">
