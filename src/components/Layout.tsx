@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, NavLink } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { 
@@ -17,15 +17,37 @@ import {
   LogOut
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
+import { getDeviceFingerprint } from '../lib/deviceFingerprint';
+import { DeviceLockedScreen } from './DeviceLockedScreen';
 
 export const Layout: React.FC = () => {
   const { currentUser, logout } = useAuth();
+  const { bindCurrentDevice } = useData();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
+  const clientDevice = getDeviceFingerprint();
+
+  // Single-Device Binding check (Strictly enforced for students; teachers and admins are exempt)
+  const isStudent = currentUser?.role === 'student';
+  const isDeviceBound = Boolean(currentUser?.boundDeviceId);
+  const isDeviceMatch = isDeviceBound && currentUser?.boundDeviceId === clientDevice.deviceId;
+  const isUnauthorizedStudentDevice = Boolean(isStudent && isDeviceBound && !isDeviceMatch);
+
+  // Auto-bind device on the student's first login
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'student' && !currentUser.boundDeviceId) {
+      bindCurrentDevice(currentUser.uid, {
+        deviceId: clientDevice.deviceId,
+        deviceName: clientDevice.deviceName,
+        platform: clientDevice.platform
+      });
+    }
+  }, [currentUser?.uid, currentUser?.boundDeviceId]);
+
   const isTeacher = currentUser?.role === 'teacher';
   const isAdmin = currentUser?.role === 'admin';
-  const isStudent = currentUser?.role === 'student';
 
   // If in live attendance presentation mode, don't wrap in standard sidebar layout
   const isLiveScreen = location.pathname.includes('/live-session');
@@ -142,58 +164,64 @@ export const Layout: React.FC = () => {
 
         {/* Scrollable Page Body */}
         <main className="flex-1 overflow-y-auto p-3.5 sm:p-5 md:p-8 pb-24 md:pb-8 touch-scroll">
-          <Outlet />
+          {isUnauthorizedStudentDevice ? (
+            <DeviceLockedScreen clientDevice={clientDevice} />
+          ) : (
+            <Outlet />
+          )}
         </main>
 
-        {/* Thumb-First Mobile Bottom Navigation Bar (Phone Only) */}
-        <nav 
-          aria-label="Mobile Navigation" 
-          className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-warm-300 px-2 py-1 safe-bottom flex items-center justify-around shadow-elevated"
-        >
-          {bottomNavItems.map((item) => {
-            const Icon = item.icon;
-            if (item.isPrimaryAction) {
+        {/* Thumb-First Mobile Bottom Navigation Bar (Phone Only - hidden if device locked) */}
+        {!isUnauthorizedStudentDevice && (
+          <nav 
+            aria-label="Mobile Navigation" 
+            className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-warm-300 px-2 py-1 safe-bottom flex items-center justify-around shadow-elevated"
+          >
+            {bottomNavItems.map((item) => {
+              const Icon = item.icon;
+              if (item.isPrimaryAction) {
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      `flex flex-col items-center justify-center -mt-4 px-3 py-1 rounded-full group transition-transform active:scale-95 ${
+                        isActive ? 'scale-105' : ''
+                      }`
+                    }
+                  >
+                    <div className="h-12 w-12 rounded-full bg-navy-900 text-white flex items-center justify-center shadow-lg border-2 border-primary group-hover:bg-navy-800 transition-colors">
+                      <Icon className="h-5 w-5 text-teal-400" />
+                    </div>
+                    <span className="text-[10px] font-bold font-sans text-navy-900 mt-0.5">
+                      {item.label}
+                    </span>
+                  </NavLink>
+                );
+              }
+
               return (
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  end={item.to === '/teacher' || item.to === '/student'}
                   className={({ isActive }) =>
-                    `flex flex-col items-center justify-center -mt-4 px-3 py-1 rounded-full group transition-transform active:scale-95 ${
-                      isActive ? 'scale-105' : ''
+                    `flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-1.5 rounded-lg text-center transition-colors ${
+                      isActive
+                        ? 'text-teal-800 font-semibold'
+                        : 'text-navy-500 hover:text-navy-800'
                     }`
                   }
                 >
-                  <div className="h-12 w-12 rounded-full bg-navy-900 text-white flex items-center justify-center shadow-lg border-2 border-primary group-hover:bg-navy-800 transition-colors">
-                    <Icon className="h-5 w-5 text-teal-400" />
-                  </div>
-                  <span className="text-[10px] font-bold font-sans text-navy-900 mt-0.5">
+                  <Icon className="h-5 w-5 mb-0.5" strokeWidth={1.9} />
+                  <span className="text-[10px] leading-tight font-sans">
                     {item.label}
                   </span>
                 </NavLink>
               );
-            }
-
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/teacher' || item.to === '/student'}
-                className={({ isActive }) =>
-                  `flex flex-col items-center justify-center min-w-[56px] min-h-[48px] py-1 px-1.5 rounded-lg text-center transition-colors ${
-                    isActive
-                      ? 'text-teal-800 font-semibold'
-                      : 'text-navy-500 hover:text-navy-800'
-                  }`
-                }
-              >
-                <Icon className="h-5 w-5 mb-0.5" strokeWidth={1.9} />
-                <span className="text-[10px] leading-tight font-sans">
-                  {item.label}
-                </span>
-              </NavLink>
-            );
-          })}
-        </nav>
+            })}
+          </nav>
+        )}
       </div>
     </div>
   );

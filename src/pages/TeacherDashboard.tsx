@@ -24,7 +24,9 @@ import {
   RotateCcw,
   Ban,
   CalendarClock,
-  CheckCircle
+  CheckCircle,
+  Smartphone,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -42,6 +44,10 @@ export const TeacherDashboard: React.FC = () => {
     divisions, 
     enrollments,
     subjectAllocations,
+    deviceChangeRequests,
+    approveDeviceChange,
+    rejectDeviceChange,
+    resetStudentDevice,
     scheduleExtraLecture,
     cancelScheduledLecture,
     rescheduleLecture,
@@ -111,6 +117,43 @@ export const TeacherDashboard: React.FC = () => {
   // Historical sessions & pending requests
   const mySessions = sessions.filter(s => s.teacherId === currentUser?.uid);
   const pendingRequests = requests.filter(r => (r.teacherId === currentUser?.uid || myCourseIds.includes(r.courseId)) && r.status === 'pending');
+
+  // Device Change Requests State (Department Teacher Approval)
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [rejectingReqId, setRejectingReqId] = useState<string | null>(null);
+  const [rejectReasonInput, setRejectReasonInput] = useState('');
+  const [deviceActionNotice, setDeviceActionNotice] = useState<string | null>(null);
+
+  // Scoped to this department teacher's department
+  const deptDeviceRequests = deviceChangeRequests.filter(
+    r => !currentUser?.department || 
+         r.department.toLowerCase().includes(currentUser.department.toLowerCase()) || 
+         currentUser.department.toLowerCase().includes(r.department.toLowerCase()) ||
+         r.departmentId === currentUser.departmentId
+  );
+  const pendingDeviceRequests = deptDeviceRequests.filter(r => r.status === 'pending');
+
+  const handleApproveDevice = async (reqId: string, studentName: string) => {
+    try {
+      await approveDeviceChange(reqId, currentUser?.uid || 'teacher_uid', currentUser?.fullName || 'Faculty Member');
+      setDeviceActionNotice(`Approved new device binding for ${studentName}.`);
+      setTimeout(() => setDeviceActionNotice(null), 3500);
+    } catch (err: any) {
+      alert(err.message || 'Failed to approve device change.');
+    }
+  };
+
+  const handleRejectDevice = async (reqId: string, studentName: string) => {
+    try {
+      await rejectDeviceChange(reqId, currentUser?.uid || 'teacher_uid', currentUser?.fullName || 'Faculty Member', rejectReasonInput.trim() || undefined);
+      setRejectingReqId(null);
+      setRejectReasonInput('');
+      setDeviceActionNotice(`Rejected device change request for ${studentName}.`);
+      setTimeout(() => setDeviceActionNotice(null), 3500);
+    } catch (err: any) {
+      alert(err.message || 'Failed to reject device change.');
+    }
+  };
 
   // Compute average attendance percentage
   const myConductedSessions = mySessions.filter(s => s.conductStatus === 'COMPLETED' || s.status === 'ended');
@@ -341,6 +384,26 @@ export const TeacherDashboard: React.FC = () => {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
+            onClick={() => setShowDeviceModal(true)}
+            className={`px-3 py-2 min-h-[44px] rounded-lg border text-xs font-semibold shadow-subtle transition-all duration-150 inline-flex items-center justify-center gap-1.5 active:scale-95 ${
+              pendingDeviceRequests.length > 0 
+                ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100' 
+                : 'border-warm-300 bg-surface hover:bg-warm-100 text-navy-800'
+            }`}
+            title="Review student mobile device transfer requests"
+          >
+            <Smartphone className="h-4 w-4 text-primary" aria-hidden="true" />
+            <span className="hidden sm:inline">Device Requests</span>
+            <span className="sm:hidden">Devices</span>
+            {pendingDeviceRequests.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono font-bold text-[10px] animate-pulse">
+                {pendingDeviceRequests.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={handleOpenExtraModal}
             className="flex-1 sm:flex-none px-3.5 py-2 min-h-[44px] rounded-lg border border-warm-300 bg-surface hover:bg-warm-100 text-navy-800 text-xs font-semibold shadow-subtle transition-all duration-150 inline-flex items-center justify-center gap-2 active:scale-95"
             title="Conduct an unscheduled or compensatory class outside regular timetable"
@@ -359,6 +422,82 @@ export const TeacherDashboard: React.FC = () => {
           </Link>
         </div>
       </div>
+
+      {deviceActionNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-xs text-emerald-900 flex items-center gap-2 animate-fade-in">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>{deviceActionNotice}</span>
+        </div>
+      )}
+
+      {/* Urgent Pending Student Device Change Requests Banner */}
+      {pendingDeviceRequests.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-xl bg-amber-50 border-2 border-amber-300 shadow-subtle space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200 pb-2.5">
+            <div className="flex items-center gap-2 text-amber-900">
+              <Smartphone className="h-4 w-4 text-amber-700 shrink-0" />
+              <h3 className="text-xs font-bold uppercase font-mono tracking-wider">
+                Student Device Change Requests ({pendingDeviceRequests.length} Pending Approval)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowDeviceModal(true)}
+              className="text-xs font-semibold text-amber-900 hover:underline self-start sm:self-auto"
+            >
+              View Full History &rarr;
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            {pendingDeviceRequests.slice(0, 3).map(req => (
+              <div 
+                key={req.id}
+                className="p-3.5 rounded-lg bg-surface border border-amber-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-navy-900">{req.studentName}</span>
+                    <span className="text-[11px] font-mono text-navy-500">Roll: {req.studentRollNo}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-warm-100 text-navy-700 text-[10px] font-mono border border-warm-200">
+                      {req.divisionName || 'Div A'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-navy-600">
+                    <span className="text-navy-400">Old:</span> {req.oldDeviceName || 'Previous Phone'}{' '}
+                    &rarr; <strong className="text-navy-800">New:</strong> {req.newDeviceName}
+                  </p>
+                  <p className="text-[11px] text-amber-800 italic bg-amber-50/60 p-1.5 rounded border border-amber-100 inline-block">
+                    Reason: "{req.reason}"
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleApproveDevice(req.id, req.studentName)}
+                    className="px-3 py-1.5 min-h-[38px] rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95 inline-flex items-center gap-1.5"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    <span>Approve</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRejectingReqId(req.id);
+                      setRejectReasonInput('Proxy attendance suspected / Invalid phone change');
+                    }}
+                    className="px-3 py-1.5 min-h-[38px] rounded-lg border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold transition-colors"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 2. Today's Timetable-Driven Schedule & QR Dispatch Hub */}
       <div className="rounded-xl border border-warm-300 bg-surface p-5 shadow-subtle space-y-4">
@@ -1246,6 +1385,217 @@ export const TeacherDashboard: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Device Request Reason Modal */}
+      {rejectingReqId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-surface rounded-2xl border border-warm-300 shadow-elevated w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-warm-200 pb-3">
+              <div className="flex items-center gap-2 text-rose-700">
+                <AlertTriangle className="h-4 w-4" />
+                <h3 className="text-sm font-bold text-navy-900">Reject Device Request</h3>
+              </div>
+              <button 
+                onClick={() => setRejectingReqId(null)}
+                className="p-1 rounded-md text-navy-400 hover:text-navy-700 hover:bg-warm-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-navy-800 block mb-1">
+                Reason for Rejection <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={rejectReasonInput}
+                onChange={e => setRejectReasonInput(e.target.value)}
+                placeholder="e.g. Proxy attendance suspected / Unverified device change..."
+                className="w-full px-3 py-2 text-xs border border-warm-300 rounded-lg bg-white text-navy-900 focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-warm-200">
+              <button
+                type="button"
+                onClick={() => setRejectingReqId(null)}
+                className="px-3.5 py-2 rounded-lg border border-warm-300 text-xs font-semibold text-navy-700 hover:bg-warm-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const req = deviceChangeRequests.find(r => r.id === rejectingReqId);
+                  if (req) handleRejectDevice(req.id, req.studentName);
+                }}
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-subtle"
+              >
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full Department Device Change Requests Modal */}
+      {showDeviceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-surface rounded-2xl border border-warm-300 shadow-elevated w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-warm-200 flex items-center justify-between bg-warm-50/50 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-navy-900">
+                    Student Device Transfer Requests
+                  </h3>
+                  <p className="text-xs text-navy-500">
+                    Department Faculty Authority &bull; {currentUser?.department || 'Department Roster'}
+                  </p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowDeviceModal(false)}
+                className="p-1.5 rounded-lg text-navy-400 hover:text-navy-700 hover:bg-warm-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-4 flex-1 touch-scroll">
+              <div className="p-3 rounded-lg bg-teal-50/70 border border-teal-200 text-teal-900 text-xs flex items-start gap-2">
+                <ShieldCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <strong>Anti-Proxy Protection Rule:</strong> Students cannot mark attendance on another student's phone. When a student upgrades or repairs their phone, approving here transfers the permanent cryptographic binding to their new device.
+                </div>
+              </div>
+
+              {deptDeviceRequests.length === 0 ? (
+                <div className="p-10 text-center space-y-2">
+                  <Smartphone className="h-10 w-10 text-warm-400 mx-auto" />
+                  <p className="text-sm font-bold text-navy-900">No device requests found</p>
+                  <p className="text-xs text-navy-500">All student devices in your department are currently verified and active.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {deptDeviceRequests.map(req => (
+                    <div 
+                      key={req.id}
+                      className={`p-4 rounded-xl border shadow-subtle space-y-3 ${
+                        req.status === 'pending'
+                          ? 'bg-amber-50/40 border-amber-300'
+                          : req.status === 'approved'
+                            ? 'bg-surface border-teal-200'
+                            : 'bg-warm-50 border-warm-200 opacity-75'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-warm-200 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-navy-900">{req.studentName}</span>
+                          <span className="text-xs font-mono text-navy-600 font-semibold">({req.studentRollNo})</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-warm-100 text-navy-700 border border-warm-200">
+                            {req.divisionName || 'All Divisions'}
+                          </span>
+                        </div>
+
+                        <div>
+                          {req.status === 'pending' && (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-mono font-bold text-[10px] border border-amber-300 animate-pulse">
+                              Pending Review
+                            </span>
+                          )}
+                          {req.status === 'approved' && (
+                            <span className="px-2 py-0.5 rounded-full bg-teal-100 text-teal-900 font-mono font-bold text-[10px] border border-teal-300">
+                              Approved & Linked ✓
+                            </span>
+                          )}
+                          {req.status === 'rejected' && (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-900 font-mono font-bold text-[10px] border border-rose-300">
+                              Rejected ✕
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div className="p-2.5 rounded-lg bg-surface border border-warm-200">
+                          <span className="text-[10px] font-mono text-navy-500 uppercase block">Old Registered Device</span>
+                          <span className="font-mono text-navy-700 font-medium">{req.oldDeviceName || 'Previous Device'}</span>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-surface border border-warm-200">
+                          <span className="text-[10px] font-mono text-navy-500 uppercase block">Requested New Device</span>
+                          <span className="font-mono text-navy-900 font-bold">{req.newDeviceName}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-xs space-y-1">
+                        <span className="text-[10px] font-mono text-navy-500 uppercase block">Student Reason:</span>
+                        <p className="text-navy-800 italic bg-white p-2 rounded border border-warm-200">
+                          "{req.reason}"
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-warm-200 text-xs">
+                        <span className="text-[11px] font-mono text-navy-500">
+                          Submitted: {new Date(req.requestedAt).toLocaleString()}
+                        </span>
+
+                        {req.status === 'pending' && (
+                          <div className="flex items-center gap-2 self-end sm:self-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleApproveDevice(req.id, req.studentName)}
+                              className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95 inline-flex items-center gap-1.5"
+                            >
+                              <CheckCircle className="h-3.5 w-3.5" />
+                              <span>Approve & Link</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRejectingReqId(req.id);
+                                setRejectReasonInput('Proxy attendance suspected / Invalid phone change');
+                              }}
+                              className="px-3.5 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold transition-colors"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+
+                        {req.status === 'approved' && req.reviewedByTeacherName && (
+                          <span className="text-[11px] font-mono text-teal-800 font-medium">
+                            Approved by Prof. {req.reviewedByTeacherName}
+                          </span>
+                        )}
+                        {req.status === 'rejected' && (
+                          <span className="text-[11px] font-mono text-rose-700 font-medium">
+                            Reason: {req.rejectionReason}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-warm-200 flex justify-end bg-warm-50/50 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowDeviceModal(false)}
+                className="px-4 py-2 rounded-lg bg-surface border border-warm-300 hover:bg-warm-100 text-navy-800 text-xs font-semibold"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -138,7 +138,7 @@ export const AttendanceHistory: React.FC = () => {
               <th className="p-3">Status</th>
               <th className="p-3">Marked Timestamp</th>
               <th className="p-3">Verification Source</th>
-              <th className="p-3 text-right">Selfie Audit Stamp</th>
+              <th className="p-3 text-right">Perimeter Audit</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-warm-200">
@@ -167,27 +167,23 @@ export const AttendanceHistory: React.FC = () => {
                     <td className="p-3">
                       <span className="inline-flex items-center gap-1 text-[11px] font-mono text-teal-700">
                         <CheckCircle2 className="h-3 w-3 text-primary" />
-                        {r.verificationPhoto ? 'QR + Face Match' : r.source === 'qr_scan' ? 'Dynamic QR' : 'Manual'}
+                        {r.source === 'qr_scan' ? 'Dynamic QR' : 'Manual Entry'}
                       </span>
                     </td>
                     <td className="p-3 text-right">
-                      {r.verificationPhoto ? (
+                      {r.studentCoordinates ? (
                         <button
                           type="button"
                           onClick={() => setInspectingRecord(r)}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-warm-100 hover:bg-warm-200 border border-warm-300 text-[11px] font-mono text-navy-800 transition-colors"
-                          title="Inspect captured selfie stamp"
+                          title="Inspect perimeter audit"
                         >
-                          <img
-                            src={r.verificationPhoto}
-                            alt="Selfie thumbnail"
-                            className="w-5 h-5 rounded-full object-cover border border-emerald-500 scale-x-[-1]"
-                          />
-                          <span>View Stamp</span>
+                          <MapPin className="h-3 w-3 text-primary" />
+                          <span>Perimeter Pass</span>
                         </button>
                       ) : (
                         <span className="text-[10px] text-navy-400 font-mono italic">
-                          No photo
+                          Standard
                         </span>
                       )}
                     </td>
@@ -199,14 +195,14 @@ export const AttendanceHistory: React.FC = () => {
         </table>
       </div>
 
-      {/* Selfie Audit Stamp Inspection Modal */}
+      {/* Audit Inspection Modal */}
       {inspectingRecord && (
         <div className="fixed inset-0 z-50 bg-navy-950/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-surface rounded-2xl border border-warm-300 shadow-elevated max-w-sm w-full p-5 space-y-4 animate-scaleUp">
             <div className="flex items-center justify-between border-b border-warm-200 pb-2.5">
               <div className="flex items-center gap-1.5 text-xs font-bold text-navy-900 font-mono uppercase">
                 <ShieldCheck className="h-4 w-4 text-primary" />
-                <span>Biometric Audit Verification</span>
+                <span>Attendance Verification Audit</span>
               </div>
               <button
                 type="button"
@@ -215,24 +211,6 @@ export const AttendanceHistory: React.FC = () => {
               >
                 <X className="h-4 w-4" />
               </button>
-            </div>
-
-            {/* Selfie Photo */}
-            <div className="relative mx-auto w-32 h-32 rounded-full border-4 border-emerald-500 overflow-hidden shadow-md">
-              {inspectingRecord.verificationPhoto ? (
-                <img
-                  src={inspectingRecord.verificationPhoto}
-                  alt="Student Selfie"
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
-              ) : (
-                <div className="w-full h-full bg-warm-100 flex items-center justify-center text-navy-400 font-mono text-xs">
-                  No Image
-                </div>
-              )}
-              <div className="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-[9px] font-mono font-bold text-center py-0.5">
-                VERIFIED MATCH
-              </div>
             </div>
 
             {/* Student & Session Ledger Details */}
@@ -250,8 +228,8 @@ export const AttendanceHistory: React.FC = () => {
                 <span className="font-bold text-navy-900">{formatDate(inspectingRecord.markedAt)} at {formatTime(inspectingRecord.markedAt)}</span>
               </div>
               <div className="flex items-center justify-between pt-0.5">
-                <span className="text-navy-500 text-[11px]">MATCH CONFIDENCE</span>
-                <span className="font-bold text-teal-800 font-mono">{inspectingRecord.faceConfidence || 94}%</span>
+                <span className="text-navy-500 text-[11px]">VERIFICATION</span>
+                <span className="font-bold text-teal-800 font-mono">Dynamic QR Validated</span>
               </div>
             </div>
 

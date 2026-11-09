@@ -15,7 +15,8 @@ import {
   Organization,
   DayOfWeek,
   LectureConductStatus,
-  LectureSessionCategory
+  LectureSessionCategory,
+  DeviceChangeRequest
 } from '../types';
 import { 
   INITIAL_COURSES, 
@@ -134,31 +135,14 @@ interface DataContextType {
   resumeSession: (sessionId: string) => Promise<void>;
   endSession: (sessionId: string) => Promise<void>;
   
-  // Live attendance verification & recording (with Geofencing coordinates & Facial Biometrics)
+  // Live attendance verification & recording (with Geofencing coordinates)
   verifyAndRecordAttendance: (
     token: string, 
     studentUid: string, 
     studentName: string, 
     studentRollNo: string,
-    studentCoords?: { latitude: number; longitude: number },
-    verificationDetails?: {
-      verificationPhoto?: string;
-      faceConfidence?: number;
-      livenessConfirmed?: boolean;
-      auditFlag?: 'VERIFIED_MATCH' | 'SUSPECT_MISMATCH' | 'FLAGGED_FOR_REVIEW';
-    }
-  ) => Promise<{ 
-    success: boolean; 
-    message: string; 
-    courseName?: string; 
-    courseCode?: string;
-    sessionTopic?: string; 
-    markedAt?: string; 
-    distanceMeters?: number;
-    verificationPhoto?: string;
-    faceConfidence?: number;
-    auditFlag?: string;
-  }>;
+    studentCoords?: { latitude: number; longitude: number }
+  ) => Promise<{ success: boolean; message: string; courseName?: string; sessionTopic?: string; markedAt?: string; distanceMeters?: number }>;
   
   // Intelligent Timetable Actions
   addTimetableSlot: (slot: Omit<TimetableSlot, 'id'>) => Promise<TimetableSlot>;
@@ -192,6 +176,14 @@ interface DataContextType {
   removeDepartment: (deptName: string) => Promise<void>;
   assignFacultyDepartment: (facultyUid: string, department: string) => Promise<void>;
   removeFaculty: (facultyUid: string) => Promise<void>;
+
+  // 1-Student = 1-Device Binding & Change Requests (Department Teacher Approval)
+  deviceChangeRequests: DeviceChangeRequest[];
+  requestDeviceChange: (reason: string, newDevice: { deviceId: string; deviceName: string; platform?: string }) => Promise<{ success: boolean; message: string }>;
+  approveDeviceChange: (requestId: string, teacherId: string, teacherName: string) => Promise<void>;
+  rejectDeviceChange: (requestId: string, teacherId: string, teacherName: string, reason?: string) => Promise<void>;
+  resetStudentDevice: (studentUid: string, teacherId: string, teacherName: string) => Promise<void>;
+  bindCurrentDevice: (studentUid: string, device: { deviceId: string; deviceName: string; platform?: string }) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -286,6 +278,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return INITIAL_SUBJECT_ALLOCATIONS;
   });
 
+  const [deviceChangeRequests, setDeviceChangeRequests] = useState<DeviceChangeRequest[]>(() => {
+    const saved = localStorage.getItem('smartattend_device_requests');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [
+      {
+        id: 'dreq_demo_101',
+        studentUid: 'student_aarav_patel',
+        studentName: 'Aarav Patel',
+        studentRollNo: '22CS042',
+        studentEmail: 'aarav.cs22@college.edu',
+        department: 'Computer Engineering',
+        departmentId: 'dept_comp',
+        divisionId: 'div_comp_te_a',
+        divisionName: 'Division A',
+        yearOfStudy: 'Third Year',
+        oldDeviceId: 'dev_old_samsung_a54',
+        oldDeviceName: 'Google Chrome on Android (Samsung Galaxy A54)',
+        newDeviceId: 'dev_new_oneplus_12',
+        newDeviceName: 'Google Chrome on Android (OnePlus 12)',
+        newDevicePlatform: 'Android',
+        reason: 'Upgraded to a new phone; old screen was cracked and unresponsive.',
+        status: 'pending',
+        requestedAt: new Date(Date.now() - 3600000 * 3).toISOString()
+      }
+    ];
+  });
+
   const [dayConfigs, setDayConfigs] = useState<Record<string, { isWorkingDay: boolean; holidayReason?: string }>>(() => {
     const saved = localStorage.getItem('smartattend_day_configs');
     if (saved) {
@@ -317,7 +338,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('smartattend_departments', JSON.stringify(departments));
     localStorage.setItem('smartattend_divisions', JSON.stringify(divisions));
     localStorage.setItem('smartattend_subject_allocations', JSON.stringify(subjectAllocations));
-  }, [courses, enrollments, requests, sessions, attendanceRecords, timetable, organizationUsers, departments, divisions, subjectAllocations]);
+    localStorage.setItem('smartattend_device_requests', JSON.stringify(deviceChangeRequests));
+  }, [courses, enrollments, requests, sessions, attendanceRecords, timetable, organizationUsers, departments, divisions, subjectAllocations, deviceChangeRequests]);
 
   // Real-time Firestore Sync Listeners
   useEffect(() => {
@@ -1282,13 +1304,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     studentUid: string, 
     studentName: string, 
     studentRollNo: string,
-    studentCoords?: { latitude: number; longitude: number },
-    verificationDetails?: {
-      verificationPhoto?: string;
-      faceConfidence?: number;
-      livenessConfirmed?: boolean;
-      auditFlag?: 'VERIFIED_MATCH' | 'SUSPECT_MISMATCH' | 'FLAGGED_FOR_REVIEW';
-    }
+    studentCoords?: { latitude: number; longitude: number }
   ) => {
     if (!token || !token.startsWith('SA_TOKEN::')) {
       return { success: false, message: 'Invalid QR code format. Please scan an authentic SmartAttend QR code.' };
@@ -1369,7 +1385,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // 5. Record Attendance with Biometric Photo Stamp
+    // 5. Record Attendance
     const markedAt = new Date().toISOString();
     const recordId = `rec_${sessionId}_${studentUid}`;
     const newRecord: AttendanceRecord = {
@@ -1389,11 +1405,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           longitude: studentCoords.longitude,
           distanceMeters
         }
-      } : {}),
-      verificationPhoto: verificationDetails?.verificationPhoto,
-      faceConfidence: verificationDetails?.faceConfidence,
-      livenessConfirmed: verificationDetails?.livenessConfirmed ?? true,
-      auditFlag: verificationDetails?.auditFlag || 'VERIFIED_MATCH'
+      } : {})
     };
 
     setAttendanceRecords(prev => [newRecord, ...prev]);
@@ -1421,13 +1433,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? `Attendance verified! Physical presence confirmed (${distanceMeters}m from instructor).`
         : 'Attendance recorded successfully!', 
       courseName: `${session.courseCode} — ${session.courseName}`,
-      courseCode: session.courseCode,
       sessionTopic: session.lectureTopic,
       markedAt,
-      distanceMeters,
-      verificationPhoto: verificationDetails?.verificationPhoto,
-      faceConfidence: verificationDetails?.faceConfidence,
-      auditFlag: verificationDetails?.auditFlag
+      distanceMeters
     };
   };
 
@@ -2209,6 +2217,202 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setOrganizationUsers(prev => [...newFacultyUsers, ...newStudentUsers, ...prev]);
   };
 
+  // 1-Student = 1-Device Binding & Change Requests (Department Teacher Approval)
+  const bindCurrentDevice = async (
+    studentUid: string, 
+    device: { deviceId: string; deviceName: string; platform?: string }
+  ) => {
+    const boundAt = new Date().toISOString();
+    const updates: Partial<UserProfile> = {
+      boundDeviceId: device.deviceId,
+      boundDeviceName: device.deviceName,
+      boundDevicePlatform: device.platform || 'Mobile',
+      boundAt,
+      deviceStatus: 'active'
+    };
+
+    setOrganizationUsers(prev => prev.map(u => u.uid === studentUid ? { ...u, ...updates } : u));
+
+    if (currentUser?.uid === studentUid) {
+      const updatedUser = { ...currentUser, ...updates, updatedAt: boundAt };
+      localStorage.setItem('smartattend_current_user', JSON.stringify(updatedUser));
+    }
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await updateDoc(doc(db, 'users', studentUid), updates);
+      } catch (err) {
+        console.warn('Failed to bind device in Firestore:', err);
+      }
+    }
+  };
+
+  const requestDeviceChange = async (
+    reason: string, 
+    newDevice: { deviceId: string; deviceName: string; platform?: string }
+  ): Promise<{ success: boolean; message: string }> => {
+    if (!currentUser) return { success: false, message: 'You must be logged in to request a device change.' };
+
+    const existingPending = deviceChangeRequests.some(
+      r => r.studentUid === currentUser.uid && r.status === 'pending'
+    );
+    if (existingPending) {
+      return { success: false, message: 'You already have a device change request pending approval from your Department Teacher.' };
+    }
+
+    const reqId = `dreq_${Date.now()}`;
+    const newReq: DeviceChangeRequest = {
+      id: reqId,
+      studentUid: currentUser.uid,
+      studentName: currentUser.fullName,
+      studentRollNo: currentUser.studentId || currentUser.rollNo || 'N/A',
+      studentEmail: currentUser.email,
+      department: currentUser.department || 'General',
+      departmentId: currentUser.departmentId,
+      divisionId: currentUser.divisionId,
+      divisionName: currentUser.divisionName,
+      yearOfStudy: currentUser.yearOfStudy,
+      oldDeviceId: currentUser.boundDeviceId,
+      oldDeviceName: currentUser.boundDeviceName,
+      newDeviceId: newDevice.deviceId,
+      newDeviceName: newDevice.deviceName,
+      newDevicePlatform: newDevice.platform,
+      reason,
+      status: 'pending',
+      requestedAt: new Date().toISOString()
+    };
+
+    setDeviceChangeRequests(prev => [newReq, ...prev]);
+
+    setOrganizationUsers(prev => prev.map(u => u.uid === currentUser.uid ? { ...u, deviceStatus: 'change_pending' } : u));
+    if (currentUser) {
+      const updatedUser = { ...currentUser, deviceStatus: 'change_pending' as const };
+      localStorage.setItem('smartattend_current_user', JSON.stringify(updatedUser));
+    }
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await setDoc(doc(db, 'deviceChangeRequests', reqId), newReq);
+        await updateDoc(doc(db, 'users', currentUser.uid), { deviceStatus: 'change_pending' });
+      } catch (err) {
+        console.warn('Firestore deviceChangeRequest error:', err);
+      }
+    }
+
+    return { success: true, message: 'Device change request sent to Department Teacher.' };
+  };
+
+  const approveDeviceChange = async (requestId: string, teacherId: string, teacherName: string): Promise<void> => {
+    const req = deviceChangeRequests.find(r => r.id === requestId);
+    if (!req) return;
+
+    const reviewedAt = new Date().toISOString();
+    setDeviceChangeRequests(prev => prev.map(r => r.id === requestId ? {
+      ...r,
+      status: 'approved',
+      reviewedByTeacherId: teacherId,
+      reviewedByTeacherName: teacherName,
+      reviewedAt
+    } : r));
+
+    const studentUpdates: Partial<UserProfile> = {
+      boundDeviceId: req.newDeviceId,
+      boundDeviceName: req.newDeviceName,
+      boundDevicePlatform: req.newDevicePlatform || 'Mobile',
+      boundAt: reviewedAt,
+      deviceStatus: 'active'
+    };
+
+    setOrganizationUsers(prev => prev.map(u => u.uid === req.studentUid ? { ...u, ...studentUpdates } : u));
+
+    if (currentUser?.uid === req.studentUid) {
+      const updatedUser = { ...currentUser, ...studentUpdates, updatedAt: reviewedAt };
+      localStorage.setItem('smartattend_current_user', JSON.stringify(updatedUser));
+    }
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await updateDoc(doc(db, 'deviceChangeRequests', requestId), {
+          status: 'approved',
+          reviewedByTeacherId: teacherId,
+          reviewedByTeacherName: teacherName,
+          reviewedAt
+        });
+        await updateDoc(doc(db, 'users', req.studentUid), studentUpdates);
+      } catch (err) {
+        console.warn('Firestore approveDeviceChange error:', err);
+      }
+    }
+  };
+
+  const rejectDeviceChange = async (requestId: string, teacherId: string, teacherName: string, reason?: string): Promise<void> => {
+    const req = deviceChangeRequests.find(r => r.id === requestId);
+    if (!req) return;
+
+    const reviewedAt = new Date().toISOString();
+    setDeviceChangeRequests(prev => prev.map(r => r.id === requestId ? {
+      ...r,
+      status: 'rejected',
+      rejectionReason: reason || 'Suspicious proxy attempt / Invalid request',
+      reviewedByTeacherId: teacherId,
+      reviewedByTeacherName: teacherName,
+      reviewedAt
+    } : r));
+
+    setOrganizationUsers(prev => prev.map(u => u.uid === req.studentUid ? { ...u, deviceStatus: 'active' } : u));
+
+    if (currentUser?.uid === req.studentUid) {
+      const updatedUser = { ...currentUser, deviceStatus: 'active' as const };
+      localStorage.setItem('smartattend_current_user', JSON.stringify(updatedUser));
+    }
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await updateDoc(doc(db, 'deviceChangeRequests', requestId), {
+          status: 'rejected',
+          rejectionReason: reason || 'Suspicious proxy attempt / Invalid request',
+          reviewedByTeacherId: teacherId,
+          reviewedByTeacherName: teacherName,
+          reviewedAt
+        });
+        await updateDoc(doc(db, 'users', req.studentUid), { deviceStatus: 'active' });
+      } catch (err) {
+        console.warn('Firestore rejectDeviceChange error:', err);
+      }
+    }
+  };
+
+  const resetStudentDevice = async (studentUid: string, teacherId: string, teacherName: string): Promise<void> => {
+    const studentUpdates: Partial<UserProfile> = {
+      boundDeviceId: undefined,
+      boundDeviceName: undefined,
+      boundDevicePlatform: undefined,
+      boundAt: undefined,
+      deviceStatus: 'unlinked'
+    };
+
+    setOrganizationUsers(prev => prev.map(u => u.uid === studentUid ? { ...u, ...studentUpdates } : u));
+
+    if (currentUser?.uid === studentUid) {
+      const updatedUser = { ...currentUser, ...studentUpdates };
+      localStorage.setItem('smartattend_current_user', JSON.stringify(updatedUser));
+    }
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await updateDoc(doc(db, 'users', studentUid), {
+          boundDeviceId: null,
+          boundDeviceName: null,
+          boundDevicePlatform: null,
+          boundAt: null,
+          deviceStatus: 'unlinked'
+        });
+      } catch (err) {
+        console.warn('Firestore resetStudentDevice error:', err);
+      }
+    }
+  };
+
   // Multi-tenant organization scoping:
   // Scopes courses, enrollments, requests, sessions, and timetable to the logged-in user's institution.
   const userOrgId = currentUser?.organizationId || 'org_apex_tech';
@@ -2301,7 +2505,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         getSlotConductStatus,
         bulkAddStudentsToDivision,
         bulkAddFacultyToDepartment,
-        completeInstituteOnboarding
+        completeInstituteOnboarding,
+        deviceChangeRequests,
+        requestDeviceChange,
+        approveDeviceChange,
+        rejectDeviceChange,
+        resetStudentDevice,
+        bindCurrentDevice
       }}
     >
       {children}

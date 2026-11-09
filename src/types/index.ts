@@ -103,9 +103,39 @@ export interface UserProfile {
   academicYear?: string;
   avatarUrl?: string;
   profilePhoto?: string;
-  faceBaselineVector?: number[]; // 64-D biometric baseline vector
+  // Single-Device Binding (1 Student = 1 Device)
+  boundDeviceId?: string; // Persistent cryptographic client device token
+  boundDeviceName?: string; // e.g. "Google Chrome on Android"
+  boundDevicePlatform?: string; // e.g. "Android"
+  boundAt?: string; // ISO string when device was linked
+  deviceStatus?: 'active' | 'change_pending' | 'unlinked';
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DeviceChangeRequest {
+  id: string;
+  studentUid: string;
+  studentName: string;
+  studentRollNo: string;
+  studentEmail: string;
+  department: string;
+  departmentId?: string;
+  divisionId?: string;
+  divisionName?: string;
+  yearOfStudy?: YearOfStudy;
+  oldDeviceId?: string;
+  oldDeviceName?: string;
+  newDeviceId: string;
+  newDeviceName: string;
+  newDevicePlatform?: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  reviewedByTeacherId?: string;
+  reviewedByTeacherName?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
 }
 
 export interface Course {
@@ -242,10 +272,8 @@ export interface AttendanceRecord {
     longitude: number;
     distanceMeters?: number;
   };
-  verificationPhoto?: string; // Captured live selfie data URL
-  faceConfidence?: number;    // Biometric match confidence percentage
-  livenessConfirmed?: boolean;
-  auditFlag?: 'VERIFIED_MATCH' | 'SUSPECT_MISMATCH' | 'FLAGGED_FOR_REVIEW';
+  deviceId?: string;
+  devicePlatform?: string;
 }
 
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
