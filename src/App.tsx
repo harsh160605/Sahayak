@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { TeacherDashboard } from './pages/TeacherDashboard';
 import { StudentDashboard } from './pages/StudentDashboard';
+import { StudentCourses } from './pages/student/StudentCourses';
 import { LiveAttendanceScreen } from './pages/teacher/LiveAttendanceScreen';
 import { StudentQRScanner } from './pages/student/StudentQRScanner';
 import { TeacherCourses } from './pages/teacher/TeacherCourses';
@@ -148,7 +149,7 @@ export const App: React.FC = () => {
               } />
               <Route path="/student/courses" element={
                 <ProtectedRoute allowedRole="student">
-                  <StudentDashboard />
+                  <StudentCourses />
                 </ProtectedRoute>
               } />
               <Route path="/student/scan" element={
