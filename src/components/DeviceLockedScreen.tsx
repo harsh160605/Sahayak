@@ -25,7 +25,10 @@ export const DeviceLockedScreen: React.FC<DeviceLockedScreenProps> = ({ clientDe
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  // Check if student already has a pending request
+  // Check if student has an approved transfer or a pending request for this physical device
+  const approvedTransfer = deviceChangeRequests.find(
+    r => r.studentUid === currentUser?.uid && r.status === 'approved' && r.newDeviceId === clientDevice.deviceId
+  );
   const existingPendingRequest = deviceChangeRequests.find(
     r => r.studentUid === currentUser?.uid && r.status === 'pending'
   );
@@ -132,7 +135,33 @@ export const DeviceLockedScreen: React.FC<DeviceLockedScreenProps> = ({ clientDe
       </div>
 
       {/* Action / Request Section */}
-      {existingPendingRequest ? (
+      {approvedTransfer ? (
+        /* State 0: Device Transfer Officially Approved */
+        <div className="p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-400 shadow-subtle space-y-3">
+          <div className="flex items-center gap-2.5 text-emerald-900">
+            <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-900 bg-emerald-200/80 px-2 py-0.5 rounded">
+                Authorization Granted
+              </span>
+              <h2 className="text-base sm:text-lg font-bold text-navy-900 mt-0.5">
+                Device Approved by Department Teacher
+              </h2>
+            </div>
+          </div>
+          <p className="text-xs text-navy-700 leading-relaxed">
+            Your transfer request has been officially approved by <strong>{approvedTransfer.reviewedByTeacherName || 'your Department Teacher'}</strong>. This device is now authorized for your student attendance.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="w-full py-2.5 min-h-[44px] bg-primary hover:bg-primary-hover active:bg-primary-dark text-white text-xs font-bold rounded-lg shadow-subtle transition-all active:scale-95 flex items-center justify-center gap-2"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            <span>Enter Student Portal</span>
+          </button>
+        </div>
+      ) : existingPendingRequest ? (
         /* State 1: Request Already Pending */
         <div className="p-5 rounded-xl bg-teal-50/60 border border-teal-300 shadow-subtle space-y-3 text-center sm:text-left">
           <div className="flex items-center gap-2 text-teal-900">

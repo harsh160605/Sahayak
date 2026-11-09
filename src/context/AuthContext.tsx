@@ -15,7 +15,8 @@ import {
   collection,
   query,
   where,
-  getDocs
+  getDocs,
+  onSnapshot
 } from 'firebase/firestore';
 import { auth, db, isLiveFirebaseConfigured } from '../config/firebase';
 import { INITIAL_ORGANIZATION } from '../data/initialData';
@@ -138,17 +139,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [loading, setLoading] = useState<boolean>(isLiveFirebaseConfigured);
 
-  // Sync with actual Firebase Auth state
+  // Sync with actual Firebase Auth state and real-time profile listeners
   useEffect(() => {
+    // Cross-tab / cross-window sync for currentUser
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'smartattend_current_user' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setCurrentUser(prev => JSON.stringify(prev) === e.newValue ? prev : parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
     if (!isLiveFirebaseConfigured) {
       setLoading(false);
-      return;
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+      };
     }
 
+    let unsubUserDoc: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (unsubUserDoc) {
+        unsubUserDoc();
+        unsubUserDoc = null;
+      }
+
       if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+        // Real-time Firestore document listener for currentUser profile updates (e.g. device approval by teacher)
+        unsubUserDoc = onSnapshot(doc(db, 'users', firebaseUser.uid), async (userDoc) => {
           if (userDoc.exists()) {
             const profile = userDoc.data() as UserProfile;
             setCurrentUser(profile);
@@ -156,28 +177,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // Fetch organization details if available
             if (profile.organizationId) {
-              const orgDoc = await getDoc(doc(db, 'organizations', profile.organizationId));
-              if (orgDoc.exists()) {
-                const orgData = orgDoc.data() as Organization;
-                setCurrentOrg(orgData);
-                localStorage.setItem('smartattend_current_org', JSON.stringify(orgData));
+              try {
+                const orgDoc = await getDoc(doc(db, 'organizations', profile.organizationId));
+                if (orgDoc.exists()) {
+                  const orgData = orgDoc.data() as Organization;
+                  setCurrentOrg(orgData);
+                  localStorage.setItem('smartattend_current_org', JSON.stringify(orgData));
+                }
+              } catch (orgErr) {
+                console.warn('Failed to fetch org details:', orgErr);
               }
             }
           }
-        } catch (e) {
-          console.error('Failed to fetch Firestore user profile:', e);
-        }
+          setLoading(false);
+        }, (err) => {
+          console.warn('Failed to listen to Firestore user profile:', err);
+          setLoading(false);
+        });
       } else {
         const saved = localStorage.getItem('smartattend_current_user');
         if (saved && !saved.includes('teacher_prof_') && !saved.includes('student_aarav_')) {
           setCurrentUser(null);
           localStorage.removeItem('smartattend_current_user');
         }
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      if (unsubUserDoc) unsubUserDoc();
+      unsubscribe();
+    };
   }, []);
 
   const loginWithEmail = async (email: string, pass: string) => {

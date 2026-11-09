@@ -459,7 +459,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setOrganizationUsers(prev => {
           const ids = new Set(items.map(i => i.uid));
           const localOnly = prev.filter(p => !ids.has(p.uid));
-          return [...items, ...localOnly];
+          const merged = [...items, ...localOnly];
+          if (JSON.stringify(prev) === JSON.stringify(merged)) return prev;
+          return merged;
         });
       }
     }, err => console.warn('Users directory sync notice:', err));
@@ -518,9 +520,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (items.length > 0) {
         items.sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
         setDeviceChangeRequests(prev => {
-          const ids = new Set(items.map(i => i.id));
-          const localOnly = prev.filter(p => !ids.has(p.id));
-          return [...items, ...localOnly];
+          // If local state has 'approved' or 'rejected' and incoming Firestore item is still 'pending' (network in-flight latency), keep the reviewed state
+          const merged = items.map(item => {
+            const local = prev.find(p => p.id === item.id);
+            if (local && (local.status === 'approved' || local.status === 'rejected') && item.status === 'pending') {
+              return local;
+            }
+            return item;
+          });
+          const firestoreIds = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !firestoreIds.has(p.id));
+          const finalResult = [...merged, ...localOnly];
+          // Prevent state mutation loops if identical
+          if (JSON.stringify(prev) === JSON.stringify(finalResult)) return prev;
+          return finalResult;
         });
       }
     }, err => console.warn('Device change requests sync notice:', err));
@@ -540,31 +553,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isLiveFirebaseConfigured]);
 
-  // Synchronize cross-tab and cross-window local state changes
+  // Synchronize cross-tab and cross-window local state changes (with strict loop-breaking check)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'smartattend_attendance_records' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setAttendanceRecords(parsed);
+          setAttendanceRecords(prev => JSON.stringify(prev) === e.newValue ? prev : parsed);
         } catch {}
       }
       if (e.key === 'smartattend_sessions' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setSessions(parsed);
+          setSessions(prev => JSON.stringify(prev) === e.newValue ? prev : parsed);
         } catch {}
       }
       if (e.key === 'smartattend_device_requests' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setDeviceChangeRequests(parsed);
+          setDeviceChangeRequests(prev => JSON.stringify(prev) === e.newValue ? prev : parsed);
         } catch {}
       }
       if (e.key === 'smartattend_all_users' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setOrganizationUsers(parsed);
+          setOrganizationUsers(prev => JSON.stringify(prev) === e.newValue ? prev : parsed);
         } catch {}
       }
     };
@@ -2492,13 +2505,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!req) return;
 
     const reviewedAt = new Date().toISOString();
-    setDeviceChangeRequests(prev => prev.map(r => r.id === requestId ? {
+    const updatedRequests = deviceChangeRequests.map(r => r.id === requestId ? {
       ...r,
-      status: 'approved',
+      status: 'approved' as const,
       reviewedByTeacherId: teacherId,
       reviewedByTeacherName: teacherName,
       reviewedAt
-    } : r));
+    } : r);
+
+    setDeviceChangeRequests(updatedRequests);
+    try {
+      localStorage.setItem('smartattend_device_requests', JSON.stringify(updatedRequests));
+    } catch {}
 
     const studentUpdates: Partial<UserProfile> = {
       boundDeviceId: req.newDeviceId,
@@ -2508,7 +2526,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deviceStatus: 'active'
     };
 
-    setOrganizationUsers(prev => prev.map(u => u.uid === req.studentUid ? { ...u, ...studentUpdates } : u));
+    const updatedUsers = organizationUsers.map(u => u.uid === req.studentUid ? { ...u, ...studentUpdates } : u);
+    setOrganizationUsers(updatedUsers);
+    try {
+      localStorage.setItem('smartattend_all_users', JSON.stringify(updatedUsers));
+    } catch {}
+
+    try {
+      const savedUserStr = localStorage.getItem('smartattend_current_user');
+      if (savedUserStr) {
+        const savedUser = JSON.parse(savedUserStr);
+        if (savedUser.uid === req.studentUid) {
+          const updated = { ...savedUser, ...studentUpdates, updatedAt: reviewedAt };
+          localStorage.setItem('smartattend_current_user', JSON.stringify(updated));
+        }
+      }
+    } catch {}
 
     if (currentUser?.uid === req.studentUid) {
       const updatedUser = { ...currentUser, ...studentUpdates, updatedAt: reviewedAt };
@@ -2535,16 +2568,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!req) return;
 
     const reviewedAt = new Date().toISOString();
-    setDeviceChangeRequests(prev => prev.map(r => r.id === requestId ? {
+    const updatedRequests = deviceChangeRequests.map(r => r.id === requestId ? {
       ...r,
-      status: 'rejected',
+      status: 'rejected' as const,
       rejectionReason: reason || 'Suspicious proxy attempt / Invalid request',
       reviewedByTeacherId: teacherId,
       reviewedByTeacherName: teacherName,
       reviewedAt
-    } : r));
+    } : r);
 
-    setOrganizationUsers(prev => prev.map(u => u.uid === req.studentUid ? { ...u, deviceStatus: 'active' } : u));
+    setDeviceChangeRequests(updatedRequests);
+    try {
+      localStorage.setItem('smartattend_device_requests', JSON.stringify(updatedRequests));
+    } catch {}
+
+    const updatedUsers = organizationUsers.map(u => u.uid === req.studentUid ? { ...u, deviceStatus: 'active' as const } : u);
+    setOrganizationUsers(updatedUsers);
+    try {
+      localStorage.setItem('smartattend_all_users', JSON.stringify(updatedUsers));
+    } catch {}
 
     if (currentUser?.uid === req.studentUid) {
       const updatedUser = { ...currentUser, deviceStatus: 'active' as const };
@@ -2576,7 +2618,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deviceStatus: 'unlinked'
     };
 
-    setOrganizationUsers(prev => prev.map(u => u.uid === studentUid ? { ...u, ...studentUpdates } : u));
+    const updatedUsers = organizationUsers.map(u => u.uid === studentUid ? { ...u, ...studentUpdates } : u);
+    setOrganizationUsers(updatedUsers);
+    try {
+      localStorage.setItem('smartattend_all_users', JSON.stringify(updatedUsers));
+    } catch {}
 
     if (currentUser?.uid === studentUid) {
       const updatedUser = { ...currentUser, ...studentUpdates };

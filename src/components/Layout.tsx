@@ -23,28 +23,53 @@ import { DeviceLockedScreen } from './DeviceLockedScreen';
 
 export const Layout: React.FC = () => {
   const { currentUser, logout } = useAuth();
-  const { bindCurrentDevice } = useData();
+  const { bindCurrentDevice, organizationUsers, deviceChangeRequests } = useData();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
   const clientDevice = getDeviceFingerprint();
 
+  // Find updated profile in organization directory if present
+  const liveProfile = organizationUsers.find(u => u.uid === currentUser?.uid) || currentUser;
+
+  // Check if an approved device change request exists for this student on this current physical device
+  const approvedTransfer = deviceChangeRequests.find(
+    r => r.studentUid === currentUser?.uid && r.status === 'approved' && r.newDeviceId === clientDevice.deviceId
+  );
+
   // Single-Device Binding check (Strictly enforced for students; teachers and admins are exempt)
   const isStudent = currentUser?.role === 'student';
-  const isDeviceBound = Boolean(currentUser?.boundDeviceId);
-  const isDeviceMatch = isDeviceBound && currentUser?.boundDeviceId === clientDevice.deviceId;
+  const effectiveBoundDeviceId = approvedTransfer 
+    ? clientDevice.deviceId 
+    : (liveProfile?.boundDeviceId || currentUser?.boundDeviceId);
+
+  const isDeviceBound = Boolean(effectiveBoundDeviceId);
+  const isDeviceMatch = isDeviceBound && effectiveBoundDeviceId === clientDevice.deviceId;
   const isUnauthorizedStudentDevice = Boolean(isStudent && isDeviceBound && !isDeviceMatch);
 
-  // Auto-bind device on the student's first login
+  // Auto-bind device on the student's first login OR when an approved device transfer is active
   useEffect(() => {
-    if (currentUser && currentUser.role === 'student' && !currentUser.boundDeviceId) {
+    if (!currentUser || currentUser.role !== 'student') return;
+
+    // 1. Initial bind on first student login
+    if (!currentUser.boundDeviceId && !approvedTransfer) {
+      bindCurrentDevice(currentUser.uid, {
+        deviceId: clientDevice.deviceId,
+        deviceName: clientDevice.deviceName,
+        platform: clientDevice.platform
+      });
+      return;
+    }
+
+    // 2. If department teacher approved this device transfer request, seal the new binding to profile
+    if (approvedTransfer && currentUser.boundDeviceId !== clientDevice.deviceId) {
       bindCurrentDevice(currentUser.uid, {
         deviceId: clientDevice.deviceId,
         deviceName: clientDevice.deviceName,
         platform: clientDevice.platform
       });
     }
-  }, [currentUser?.uid, currentUser?.boundDeviceId]);
+  }, [currentUser?.uid, currentUser?.boundDeviceId, approvedTransfer?.id, approvedTransfer?.status]);
 
   const isTeacher = currentUser?.role === 'teacher';
   const isAdmin = currentUser?.role === 'admin';

@@ -123,6 +123,7 @@ export const TeacherDashboard: React.FC = () => {
   const [rejectingReqId, setRejectingReqId] = useState<string | null>(null);
   const [rejectReasonInput, setRejectReasonInput] = useState('');
   const [deviceActionNotice, setDeviceActionNotice] = useState<string | null>(null);
+  const [approvingReqIds, setApprovingReqIds] = useState<Set<string>>(new Set());
 
   // Scoped to this department teacher's department or enrolled students
   const myEnrolledStudentUids = new Set(
@@ -152,12 +153,20 @@ export const TeacherDashboard: React.FC = () => {
   const pendingDeviceRequests = deptDeviceRequests.filter(r => r.status === 'pending');
 
   const handleApproveDevice = async (reqId: string, studentName: string) => {
+    if (approvingReqIds.has(reqId)) return;
+    setApprovingReqIds(prev => new Set(prev).add(reqId));
     try {
       await approveDeviceChange(reqId, currentUser?.uid || 'teacher_uid', currentUser?.fullName || 'Faculty Member');
       setDeviceActionNotice(`Approved new device binding for ${studentName}.`);
       setTimeout(() => setDeviceActionNotice(null), 3500);
     } catch (err: any) {
       alert(err.message || 'Failed to approve device change.');
+    } finally {
+      setApprovingReqIds(prev => {
+        const next = new Set(prev);
+        next.delete(reqId);
+        return next;
+      });
     }
   };
 
@@ -493,20 +502,22 @@ export const TeacherDashboard: React.FC = () => {
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
+                    disabled={approvingReqIds.has(req.id)}
                     onClick={() => handleApproveDevice(req.id, req.studentName)}
-                    className="px-3 py-1.5 min-h-[38px] rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95 inline-flex items-center gap-1.5"
+                    className="px-3 py-1.5 min-h-[38px] rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    <span>Approve</span>
+                    <CheckCircle className={`h-3.5 w-3.5 ${approvingReqIds.has(req.id) ? 'animate-spin' : ''}`} />
+                    <span>{approvingReqIds.has(req.id) ? 'Approving...' : 'Approve'}</span>
                   </button>
 
                   <button
                     type="button"
+                    disabled={approvingReqIds.has(req.id)}
                     onClick={() => {
                       setRejectingReqId(req.id);
                       setRejectReasonInput('Proxy attendance suspected / Invalid phone change');
                     }}
-                    className="px-3 py-1.5 min-h-[38px] rounded-lg border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold transition-colors"
+                    className="px-3 py-1.5 min-h-[38px] rounded-lg border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50"
                   >
                     Reject
                   </button>
@@ -1569,19 +1580,21 @@ export const TeacherDashboard: React.FC = () => {
                           <div className="flex items-center gap-2 self-end sm:self-auto">
                             <button
                               type="button"
+                              disabled={approvingReqIds.has(req.id)}
                               onClick={() => handleApproveDevice(req.id, req.studentName)}
-                              className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95 inline-flex items-center gap-1.5"
+                              className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold shadow-subtle transition-all active:scale-95 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <CheckCircle className="h-3.5 w-3.5" />
-                              <span>Approve & Link</span>
+                              <CheckCircle className={`h-3.5 w-3.5 ${approvingReqIds.has(req.id) ? 'animate-spin' : ''}`} />
+                              <span>{approvingReqIds.has(req.id) ? 'Approving...' : 'Approve & Link'}</span>
                             </button>
                             <button
                               type="button"
+                              disabled={approvingReqIds.has(req.id)}
                               onClick={() => {
                                 setRejectingReqId(req.id);
                                 setRejectReasonInput('Proxy attendance suspected / Invalid phone change');
                               }}
-                              className="px-3.5 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold transition-colors"
+                              className="px-3.5 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-50"
                             >
                               Reject
                             </button>
