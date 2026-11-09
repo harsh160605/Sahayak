@@ -59,7 +59,8 @@ export const StudentQRScanner: React.FC = () => {
 
   // Step 2: Front-Camera Facial Verification State
   const [selfieCameraActive, setSelfieCameraActive] = useState<boolean>(false);
-  const [faceStatus, setFaceStatus] = useState<'LOOKING' | 'DETECTED' | 'CHECKING_LIVENESS' | 'VERIFIED' | 'FAILED'>('LOOKING');
+  const [faceStatus, setFaceStatus] = useState<'LOOKING' | 'OCCLUDED' | 'OFF_CENTER' | 'DETECTED' | 'CHECKING_LIVENESS' | 'VERIFIED' | 'FAILED'>('LOOKING');
+  const [selfieFeedback, setSelfieFeedback] = useState<string>('Looking for your face...');
   const [faceConfidenceScore, setFaceConfidenceScore] = useState<number>(0);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | null>(null);
   const [selfieError, setSelfieError] = useState<string | null>(null);
@@ -288,11 +289,30 @@ export const StudentQRScanner: React.FC = () => {
         try {
           const result: FaceDetectionResult = await detectFaceInStream(video, canvas);
 
-          if (result.hasFace) {
+          if (result.isOccluded) {
+            consecutiveFaceFrames = 0;
+            if (autoCaptureTimerRef.current) {
+              clearTimeout(autoCaptureTimerRef.current);
+              autoCaptureTimerRef.current = null;
+              setAutoCaptureCountdown(null);
+            }
+            setFaceStatus('OCCLUDED');
+            setSelfieFeedback(result.occlusionReason || 'Face is covered. Uncover eyes, nose and mouth.');
+          } else if (!result.faceCentered && result.hasFace) {
+            consecutiveFaceFrames = 0;
+            if (autoCaptureTimerRef.current) {
+              clearTimeout(autoCaptureTimerRef.current);
+              autoCaptureTimerRef.current = null;
+              setAutoCaptureCountdown(null);
+            }
+            setFaceStatus('OFF_CENTER');
+            setSelfieFeedback(result.occlusionReason || 'Center face directly inside circular guide.');
+          } else if (result.hasFace && !result.isOccluded && result.faceCentered && result.confidence >= 55) {
             consecutiveFaceFrames++;
 
-            if (consecutiveFaceFrames >= 3) {
+            if (consecutiveFaceFrames >= 6) {
               setFaceStatus('CHECKING_LIVENESS');
+              setSelfieFeedback('Testing natural optical liveness...');
 
               // Check passive liveness across successive frames
               const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -303,6 +323,7 @@ export const StudentQRScanner: React.FC = () => {
                   const liveness = verifyPassiveLiveness(previousFrameRef.current, currentImageData);
                   if (liveness.isLive) {
                     setFaceStatus('VERIFIED');
+                    setSelfieFeedback('Face Verified! Capturing attendance stamp...');
                     setFaceConfidenceScore(result.confidence || 94);
 
                     // If not already in countdown, initiate 1-second auto-snap
@@ -310,7 +331,7 @@ export const StudentQRScanner: React.FC = () => {
                       setAutoCaptureCountdown(1);
                       autoCaptureTimerRef.current = setTimeout(() => {
                         finalizeSelfieAndSubmit(result.photoDataUrl, result.confidence || 94, result.featureVector);
-                      }, 1100);
+                      }, 1000);
                     }
                   }
                 }
@@ -318,12 +339,17 @@ export const StudentQRScanner: React.FC = () => {
               }
             } else {
               setFaceStatus('DETECTED');
+              setSelfieFeedback('Face detected • Hold steady inside circle');
             }
           } else {
-            consecutiveFaceFrames = Math.max(0, consecutiveFaceFrames - 1);
-            if (consecutiveFaceFrames === 0) {
-              setFaceStatus('LOOKING');
+            consecutiveFaceFrames = 0;
+            if (autoCaptureTimerRef.current) {
+              clearTimeout(autoCaptureTimerRef.current);
+              autoCaptureTimerRef.current = null;
+              setAutoCaptureCountdown(null);
             }
+            setFaceStatus('LOOKING');
+            setSelfieFeedback('Looking for face inside circular viewfinder...');
           }
         } catch (_) {
           // ignore transient detection frame exceptions
@@ -341,32 +367,50 @@ export const StudentQRScanner: React.FC = () => {
 
   // Manual snap fallback or auto-capture execution
   const finalizeSelfieAndSubmit = async (photoUrl?: string, confidence: number = 94, liveVector?: number[]) => {
-    stopSelfieCamera();
-
+    // 1. Strict anti-occlusion and completeness validation
     let finalPhoto = photoUrl;
-    if (!finalPhoto && selfieCanvasRef.current) {
-      finalPhoto = selfieCanvasRef.current.toDataURL('image/jpeg', 0.82);
+    let finalVector = liveVector;
+    let finalConfidence = confidence;
+
+    if (selfieVideoRef.current && selfieCanvasRef.current) {
+      const liveCheck = await detectFaceInStream(selfieVideoRef.current, selfieCanvasRef.current);
+      if (!liveCheck.hasFace || liveCheck.isOccluded || !liveCheck.faceCentered) {
+        setSelfieError(liveCheck.occlusionReason || 'Cannot record attendance: face is covered or not clearly visible. Please uncover face and hold steady.');
+        setFaceStatus(liveCheck.isOccluded ? 'OCCLUDED' : 'OFF_CENTER');
+        if (autoCaptureTimerRef.current) {
+          clearTimeout(autoCaptureTimerRef.current);
+          autoCaptureTimerRef.current = null;
+          setAutoCaptureCountdown(null);
+        }
+        return; // BLOCK ATTENDANCE MARKING
+      }
+      finalPhoto = liveCheck.photoDataUrl || selfieCanvasRef.current.toDataURL('image/jpeg', 0.85);
+      finalVector = liveCheck.featureVector;
+      finalConfidence = liveCheck.confidence;
     }
+
+    stopSelfieCamera();
     setCapturedPhotoUrl(finalPhoto || null);
 
     // Run 1:1 Identity comparison against registered student baseline vector
     let matchEvaluation = verifyStudentIdentity(
-      liveVector,
+      finalVector,
       currentUser?.faceBaselineVector,
       currentUser?.fullName || 'Student'
     );
 
     // Auto-enrollment on first attendance scan:
-    // If the student has never enrolled a face baseline yet, register this verified selfie as their permanent master baseline
+    // Requires an unoccluded, high-confidence (>= 65%) complete face!
     if (
       (!currentUser?.faceBaselineVector || currentUser.faceBaselineVector.length === 0) &&
-      liveVector &&
-      liveVector.length > 0 &&
-      finalPhoto
+      finalVector &&
+      finalVector.length > 0 &&
+      finalPhoto &&
+      finalConfidence >= 65
     ) {
       try {
         await updateProfile({
-          faceBaselineVector: liveVector,
+          faceBaselineVector: finalVector,
           profilePhoto: finalPhoto
         });
       } catch (err) {
@@ -693,13 +737,17 @@ export const StudentQRScanner: React.FC = () => {
             <div className="relative mx-auto w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
               {/* Animated Dashed Ring */}
               <div className={`absolute inset-0 rounded-full border-4 border-dashed transition-all duration-300 ${
-                faceStatus === 'VERIFIED'
-                  ? 'border-emerald-500 animate-spin-slow'
-                  : faceStatus === 'CHECKING_LIVENESS'
-                    ? 'border-teal-400 animate-pulse'
-                    : faceStatus === 'DETECTED'
-                      ? 'border-amber-400'
-                      : 'border-warm-300'
+                faceStatus === 'OCCLUDED'
+                  ? 'border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.4)]'
+                  : faceStatus === 'OFF_CENTER'
+                    ? 'border-amber-400'
+                    : faceStatus === 'VERIFIED'
+                      ? 'border-emerald-500 animate-spin-slow'
+                      : faceStatus === 'CHECKING_LIVENESS'
+                        ? 'border-teal-400 animate-pulse'
+                        : faceStatus === 'DETECTED'
+                          ? 'border-amber-400'
+                          : 'border-warm-300'
               }`} />
 
               {/* Inner Circular Video Feed */}
@@ -726,36 +774,56 @@ export const StudentQRScanner: React.FC = () => {
             </div>
 
             {/* Real-time Status Badge */}
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-warm-100 border border-warm-200">
+            <div className="space-y-1.5">
+              <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono font-semibold border ${
+                faceStatus === 'OCCLUDED'
+                  ? 'bg-rose-50 border-rose-300 text-rose-800'
+                  : faceStatus === 'OFF_CENTER'
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : faceStatus === 'VERIFIED'
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-warm-100 border-warm-200 text-navy-700'
+              }`}>
                 {faceStatus === 'LOOKING' && (
                   <>
                     <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                    <span className="text-navy-700">Looking for your face...</span>
+                    <span>{selfieFeedback}</span>
+                  </>
+                )}
+                {faceStatus === 'OCCLUDED' && (
+                  <>
+                    <AlertCircle className="h-3.5 w-3.5 text-rose-600 animate-pulse shrink-0" />
+                    <span className="font-bold text-[11px] sm:text-xs">{selfieFeedback}</span>
+                  </>
+                )}
+                {faceStatus === 'OFF_CENTER' && (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
+                    <span>{selfieFeedback}</span>
                   </>
                 )}
                 {faceStatus === 'DETECTED' && (
                   <>
                     <span className="h-2 w-2 rounded-full bg-teal-500" />
-                    <span className="text-teal-900">Face detected &bull; Hold steady</span>
+                    <span className="text-teal-900">{selfieFeedback}</span>
                   </>
                 )}
                 {faceStatus === 'CHECKING_LIVENESS' && (
                   <>
                     <span className="h-2 w-2 rounded-full bg-teal-600 animate-ping" />
-                    <span className="text-teal-900 font-bold">Checking optical liveness...</span>
+                    <span className="text-teal-900 font-bold">{selfieFeedback}</span>
                   </>
                 )}
                 {faceStatus === 'VERIFIED' && (
                   <>
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="text-emerald-900 font-bold">Identity Confirmed ({faceConfidenceScore}%)</span>
+                    <span className="text-emerald-900 font-bold">{selfieFeedback}</span>
                   </>
                 )}
               </div>
 
               <p className="text-[11px] text-navy-400">
-                Good light on your face &bull; remove caps & sunglasses
+                Face must be fully uncovered &bull; look straight at phone
               </p>
             </div>
 

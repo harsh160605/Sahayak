@@ -2,13 +2,7 @@
  * SmartAttend Lightweight Mobile Web Biometric Verification Engine
  * 
  * Production-ready on-device facial feature extraction, 1:1 biometric comparison,
- * and passive liveness verification designed for mobile web browsers without heavy downloads.
- * 
- * Mathematical & Algorithmic Foundation:
- * 1. Normalized Facial Coordinate Grid (Canonical Alignment)
- * 2. Multi-Scale Perceptual Gradient & Landmark Descriptor (64-dimensional feature vector)
- * 3. Cosine Similarity Biometric Comparison: Similarity(A, B) = (A • B) / (||A|| * ||B||)
- * 4. Micro-Temporal Frame Variance Passive Liveness Anti-Spoofing
+ * anatomical tri-tier structural verification, and anti-occlusion detection.
  */
 
 export interface FaceDetectionResult {
@@ -19,6 +13,10 @@ export interface FaceDetectionResult {
   featureVector?: number[];
   livenessScore?: number;
   isLive?: boolean;
+  isOccluded?: boolean;
+  occlusionReason?: string;
+  faceCentered?: boolean;
+  tierSkinRatios?: { upper: number; middle: number; lower: number };
 }
 
 export interface BiometricMatchResult {
@@ -36,7 +34,6 @@ export function normalizeGrayscale(imageData: ImageData): Float32Array {
   const { data, width, height } = imageData;
   const gray = new Float32Array(width * height);
   for (let i = 0, j = 0; i < data.length; i += 4, j++) {
-    // Standard sRGB luminescence formula: 0.299R + 0.587G + 0.114B
     gray[j] = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) / 255.0;
   }
   return gray;
@@ -70,9 +67,6 @@ export function extractFeatureVector(imageData: ImageData): number[] {
   }
 
   // 2. Horizontal & Vertical Gradient Projection (Sobel-like edge energy, 16 features)
-  const halfW = Math.floor(width / 2);
-  const halfH = Math.floor(height / 2);
-
   for (let b = 0; b < 8; b++) {
     const yStart = Math.floor((b * height) / 8);
     const yEnd = Math.floor(((b + 1) * height) / 8);
@@ -100,7 +94,7 @@ export function extractFeatureVector(imageData: ImageData): number[] {
   }
 
   // 3. Bilateral Facial Symmetry Indices (8 features)
-  // Compares left vs right half symmetry of eye/cheekbone quadrants
+  const halfW = Math.floor(width / 2);
   for (let s = 0; s < 8; s++) {
     const y = Math.floor((s * height) / 8);
     let symDiff = 0;
@@ -113,7 +107,6 @@ export function extractFeatureVector(imageData: ImageData): number[] {
   }
 
   // 4. Central T-Zone (Eyes & Nose Bridge) contrast markers (16 features)
-  // The ocular-nasal T-Zone exhibits the highest biological uniqueness
   const tZoneTop = Math.floor(height * 0.2);
   const tZoneBottom = Math.floor(height * 0.65);
   const tZoneLeft = Math.floor(width * 0.25);
@@ -138,29 +131,27 @@ export function extractFeatureVector(imageData: ImageData): number[] {
 
   // 5. L2 Normalization of the 64-D feature vector
   let normSq = 0;
-  for (const v of vector) normSq += v * v;
-  const norm = Math.sqrt(normSq) || 1.0;
+  for (let i = 0; i < vector.length; i++) {
+    normSq += vector[i] * vector[i];
+  }
+  const norm = Math.sqrt(normSq) || 1e-6;
   return vector.map(v => v / norm);
 }
 
 /**
- * Computes Cosine Similarity between two L2-normalized feature vectors
- * Formula: CosineSimilarity = (A • B) / (||A|| * ||B||)
+ * Calculates Cosine Similarity between two L2-normalized vectors
  */
 export function calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
-  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-  let dot = 0;
+  if (vecA.length !== vecB.length || vecA.length === 0) return 0;
+  let dotProduct = 0;
   for (let i = 0; i < vecA.length; i++) {
-    dot += vecA[i] * vecB[i];
+    dotProduct += vecA[i] * vecB[i];
   }
-  // Clamp between -1 and 1
-  return Math.max(-1, Math.min(1, dot));
+  return Math.max(-1.0, Math.min(1.0, dotProduct));
 }
 
 /**
  * Passive Liveness Check (Anti-Spoofing)
- * Compares micro-temporal frame variance between successive frames.
- * Static photos/screens display zero optical micro-jitter and flat reflectance.
  */
 export function verifyPassiveLiveness(
   frameA: ImageData, 
@@ -174,7 +165,7 @@ export function verifyPassiveLiveness(
   let nonZeroDiffPixels = 0;
   const len = frameA.data.length;
 
-  for (let i = 0; i < len; i += 16) { // Sample every 4th pixel for speed
+  for (let i = 0; i < len; i += 16) {
     const diff = Math.abs(frameA.data[i] - frameB.data[i]);
     totalDiff += diff;
     if (diff > 4) nonZeroDiffPixels++;
@@ -184,7 +175,7 @@ export function verifyPassiveLiveness(
   const avgPixelDelta = totalDiff / sampledCount;
   const motionRatio = nonZeroDiffPixels / sampledCount;
 
-  // If motion is 0, user held up an entirely static photo or frozen frame
+  // Static printed photo check
   if (avgPixelDelta < 0.4 && motionRatio < 0.01) {
     return {
       isLive: false,
@@ -193,7 +184,6 @@ export function verifyPassiveLiveness(
     };
   }
 
-  // If motion is excessively erratic, camera is shaking wildly
   if (avgPixelDelta > 65.0) {
     return {
       isLive: false,
@@ -202,15 +192,18 @@ export function verifyPassiveLiveness(
     };
   }
 
-  // Natural biological micro-motion confirmed (breathing, micro-head adjustment)
   const livenessScore = Math.min(99, Math.max(70, Math.round(75 + avgPixelDelta * 3)));
   return { isLive: true, livenessScore };
 }
 
 /**
- * Detects presence of a human face in the camera stream circular portal
- * Uses native window.FaceDetector if supported by the browser, with an ultra-fast
- * fallback canvas skin-chroma & ocular valley detector for iOS Safari.
+ * Robust Anti-Occlusion & Full-Face Structural Anatomical Analyzer
+ * 
+ * Verifies that:
+ * 1. A human face is present inside the circular reticle.
+ * 2. The face is centered (not looking up at ceiling or tucked into corner).
+ * 3. All three anatomical tiers (Upper: Eyes/Forehead, Middle: Nose/Cheeks, Lower: Mouth/Chin) are visible.
+ * 4. No white paper, notebook, coffee cup, cloth, or hand is covering any part of the face.
  */
 export async function detectFaceInStream(
   video: HTMLVideoElement,
@@ -221,93 +214,226 @@ export async function detectFaceInStream(
     return { hasFace: false, confidence: 0 };
   }
 
-  // Draw current video frame to canvas
   canvas.width = 320;
   canvas.height = 320;
   ctx.drawImage(video, 0, 0, 320, 320);
 
-  // 1. Check for modern hardware-accelerated Shape Detection API (Chrome, Edge, Android)
-  if ('FaceDetector' in window) {
-    try {
-      const detector = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
-      const faces = await detector.detect(canvas);
-      if (faces && faces.length > 0) {
-        const face = faces[0];
-        const box = {
-          x: face.boundingBox.x,
-          y: face.boundingBox.y,
-          width: face.boundingBox.width,
-          height: face.boundingBox.height
-        };
+  const fullImageData = ctx.getImageData(0, 0, 320, 320);
+  const { data } = fullImageData;
 
-        const imageData = ctx.getImageData(0, 0, 320, 320);
-        const featureVector = extractFeatureVector(imageData);
-        const photoDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  // Viewfinder geometry: Center (160, 160), target radius 110px
+  const centerX = 160;
+  const centerY = 160;
+  const targetRadius = 110;
+  const targetRadiusSq = targetRadius * targetRadius;
 
-        return {
-          hasFace: true,
-          box,
-          confidence: 96,
-          photoDataUrl,
-          featureVector,
-          isLive: true,
-          livenessScore: 92
-        };
+  // Tri-Tier anatomical boundaries inside central face frame (Y: 50 to 275)
+  // Tier 1: Forehead & Eyes (Y: 50 to 120)
+  // Tier 2: Nose & Cheeks (Y: 120 to 195)
+  // Tier 3: Mouth & Chin (Y: 195 to 275)
+  let totalInCircle = 0;
+  let skinInCircle = 0;
+
+  let skinWeightedX = 0;
+  let skinWeightedY = 0;
+
+  let upperTotal = 0;
+  let upperSkin = 0;
+  let upperPaper = 0;
+  let upperOcularDark = 0;
+
+  let middleTotal = 0;
+  let middleSkin = 0;
+  let middlePaper = 0;
+
+  let lowerTotal = 0;
+  let lowerSkin = 0;
+  let lowerPaper = 0;
+  let lowerOralDark = 0;
+
+  for (let y = 40; y < 280; y += 2) {
+    for (let x = 40; x < 280; x += 2) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq > targetRadiusSq) continue;
+      totalInCircle++;
+
+      const idx = (y * 320 + x) * 4;
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      // 1. Precise Human Skin Chromaticity Check across diverse ethnicities:
+      // R > 55, G > 35, B > 20, R > G, R > B, R - G >= 12, R - B >= 12
+      const isSkin = (r > 55) && (g > 35) && (b > 20) && (r > g) && (r > b) && ((r - g) >= 11) && ((r - b) >= 12);
+
+      // 2. Paper / Solid Obstruction Check:
+      // White paper, notebook, paper cup, or flat mask:
+      // High brightness (all channels > 135) with near-zero chromaticity divergence (|r-g| < 18, |r-b| < 18, |g-b| < 18)
+      const isPaperOrWhiteCover = (r > 135 && g > 135 && b > 135) && 
+                                  (Math.abs(r - g) < 18) && 
+                                  (Math.abs(r - b) < 18) && 
+                                  (Math.abs(g - b) < 18);
+
+      // Dark solid mask/cloth obstruction
+      const isDarkCover = (r < 35 && g < 35 && b < 35);
+      const isObstructedPixel = isPaperOrWhiteCover || isDarkCover;
+
+      if (isSkin) {
+        skinInCircle++;
+        skinWeightedX += x;
+        skinWeightedY += y;
       }
-    } catch (_) {
-      // Fall through to canvas biometric analyzer
+
+      // Tier Categorization
+      if (y >= 50 && y < 120) {
+        // Upper Tier: Forehead & Eyes
+        upperTotal++;
+        if (isSkin) upperSkin++;
+        if (isObstructedPixel) upperPaper++;
+        // Eyes/eyebrows: localized darker contrast valley
+        if (lum < 65) upperOcularDark++;
+      } else if (y >= 120 && y < 195) {
+        // Middle Tier: Nose & Cheeks
+        middleTotal++;
+        if (isSkin) middleSkin++;
+        if (isObstructedPixel) middlePaper++;
+      } else if (y >= 195 && y < 275) {
+        // Lower Tier: Mouth, Lips & Chin
+        lowerTotal++;
+        if (isSkin) lowerSkin++;
+        if (isObstructedPixel) lowerPaper++;
+        // Lips / mouth line: localized contrast valley
+        if (lum < 75) lowerOralDark++;
+      }
     }
   }
 
-  // 2. High-speed Canvas Biometric Analyzer (Works cross-platform on Safari, Chrome, Firefox)
-  // Analyzes center circular portal: 160, 160 radius 110
-  const imageData = ctx.getImageData(40, 40, 240, 240);
-  const { data } = imageData;
+  const overallSkinRatio = totalInCircle > 0 ? skinInCircle / totalInCircle : 0;
+  const upperSkinRatio = upperTotal > 0 ? upperSkin / upperTotal : 0;
+  const middleSkinRatio = middleTotal > 0 ? middleSkin / middleTotal : 0;
+  const lowerSkinRatio = lowerTotal > 0 ? lowerSkin / lowerTotal : 0;
 
-  let skinPixels = 0;
-  let totalSampled = 0;
-  let ocularDarkPixels = 0;
+  const upperPaperRatio = upperTotal > 0 ? upperPaper / upperTotal : 0;
+  const middlePaperRatio = middleTotal > 0 ? middlePaper / middleTotal : 0;
+  const lowerPaperRatio = lowerTotal > 0 ? lowerPaper / lowerTotal : 0;
 
-  for (let i = 0; i < data.length; i += 16) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    totalSampled++;
+  const ocularRatio = upperTotal > 0 ? upperOcularDark / upperTotal : 0;
+  const oralRatio = lowerTotal > 0 ? lowerOralDark / lowerTotal : 0;
 
-    // Generalized human skin-chroma luminescence condition:
-    // R > 60, G > 40, B > 20, R > G, R > B, |R - G| > 10
-    const isSkin = (r > 60) && (g > 40) && (b > 20) && (r > g) && (r > b) && (Math.abs(r - g) > 10);
-    if (isSkin) skinPixels++;
+  // Center of gravity of detected face
+  const avgFaceX = skinInCircle > 0 ? skinWeightedX / skinInCircle : centerX;
+  const avgFaceY = skinInCircle > 0 ? skinWeightedY / skinInCircle : centerY;
 
-    // Ocular / eyebrow contrast valley detection (luminescence < 65 inside upper center)
-    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    if (lum < 65) ocularDarkPixels++;
+  const xOffset = Math.abs(avgFaceX - centerX);
+  const yOffset = Math.abs(avgFaceY - centerY);
+  const isCentered = xOffset <= 45 && yOffset <= 50;
+
+  // 1. Initial Presence Check: Is there enough human face skin in the circle?
+  if (overallSkinRatio < 0.25 || skinInCircle < 450) {
+    return {
+      hasFace: false,
+      confidence: 0,
+      isOccluded: false,
+      faceCentered: false,
+      occlusionReason: 'Looking for face inside circular viewfinder...'
+    };
   }
 
-  const skinRatio = skinPixels / totalSampled;
-  const ocularRatio = ocularDarkPixels / totalSampled;
+  // 2. Centering Check: Is the student looking at ceiling or off to corner?
+  if (!isCentered) {
+    return {
+      hasFace: true,
+      confidence: 35,
+      isOccluded: false,
+      faceCentered: false,
+      occlusionReason: 'Center your face directly inside the circular reticle.'
+    };
+  }
 
-  // A centered human face in the viewfinder typically has 35% - 85% skin-chroma & sufficient ocular valley contours
-  const hasFace = skinRatio >= 0.30 && ocularRatio >= 0.04;
-  const confidence = hasFace ? Math.min(95, Math.round(60 + skinRatio * 40)) : 0;
+  // 3. Occlusion Check: Paper, Notebook, or Mask Covering Middle/Lower Face
+  if (middlePaperRatio > 0.18 || lowerPaperRatio > 0.20 || upperPaperRatio > 0.22) {
+    return {
+      hasFace: true,
+      confidence: 25,
+      isOccluded: true,
+      faceCentered: true,
+      occlusionReason: 'Face is covered by paper, mask, or object. Please uncover your face completely.'
+    };
+  }
 
-  const featureVector = hasFace ? extractFeatureVector(imageData) : undefined;
-  const photoDataUrl = hasFace ? canvas.toDataURL('image/jpeg', 0.82) : undefined;
+  // 4. Anatomical Tri-Tier Completeness Check:
+  // All three vertical sectors of the face MUST be visible without obstruction
+  if (middleSkinRatio < 0.26) {
+    return {
+      hasFace: true,
+      confidence: 30,
+      isOccluded: true,
+      faceCentered: true,
+      occlusionReason: 'Nose and cheeks not visible. Please hold phone at eye level.'
+    };
+  }
+
+  if (lowerSkinRatio < 0.18) {
+    return {
+      hasFace: true,
+      confidence: 30,
+      isOccluded: true,
+      faceCentered: true,
+      occlusionReason: 'Mouth or chin covered. Please remove mask, hand, or covering.'
+    };
+  }
+
+  if (upperSkinRatio < 0.18 || ocularRatio < 0.03) {
+    return {
+      hasFace: true,
+      confidence: 35,
+      isOccluded: true,
+      faceCentered: true,
+      occlusionReason: 'Eyes or forehead not visible. Look directly into the camera.'
+    };
+  }
+
+  // 5. Complete, Unobstructed Face Verified!
+  const structuralScore = Math.min(99, Math.round(
+    55 + 
+    overallSkinRatio * 30 + 
+    (1 - (xOffset + yOffset) / 95) * 15
+  ));
+
+  const faceBox = {
+    x: Math.max(10, Math.floor(avgFaceX - 90)),
+    y: Math.max(10, Math.floor(avgFaceY - 100)),
+    width: 180,
+    height: 200
+  };
+
+  const featureVector = extractFeatureVector(fullImageData);
+  const photoDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
   return {
-    hasFace,
-    box: hasFace ? { x: 40, y: 40, width: 240, height: 240 } : undefined,
-    confidence,
+    hasFace: true,
+    box: faceBox,
+    confidence: structuralScore,
     photoDataUrl,
     featureVector,
-    isLive: hasFace,
-    livenessScore: 88
+    isLive: true,
+    livenessScore: 92,
+    isOccluded: false,
+    faceCentered: true,
+    tierSkinRatios: {
+      upper: Math.round(upperSkinRatio * 100),
+      middle: Math.round(middleSkinRatio * 100),
+      lower: Math.round(lowerSkinRatio * 100)
+    }
   };
 }
 
 /**
  * 1:1 Identity Verification against Student Baseline Photo
- * Compares the live camera feature vector with the student's registered profile vector.
  */
 export function verifyStudentIdentity(
   liveVector: number[] | undefined,
@@ -321,15 +447,13 @@ export function verifyStudentIdentity(
       similarityPercentage: 94,
       confidenceScore: 94,
       auditStatus: 'VERIFIED_MATCH',
-      message: `Identity confirmed: ${studentName}. Photo stamp attached to attendance ledger.`
+      message: `Initial biometric baseline recorded for ${studentName}. Photo stamp attached to ledger.`
     };
   }
 
   const similarity = calculateCosineSimilarity(liveVector, baselineVector);
-  // Map similarity (-1 to 1) to percentage (0% to 100%)
   const similarityPct = Math.round(((similarity + 1) / 2) * 100);
 
-  // Verification Thresholds
   if (similarityPct >= 72) {
     return {
       isMatch: true,

@@ -82,9 +82,15 @@ export const Profile: React.FC = () => {
         if (!videoRef.current || !canvasRef.current || !streamRef.current) return;
         try {
           const det = await detectFaceInStream(videoRef.current, canvasRef.current);
-          if (det.hasFace) {
+          if (det.isOccluded) {
+            setEnrollFaceDetected(false);
+            setEnrollStatus(det.occlusionReason || 'Face is covered. Uncover eyes, nose, and mouth.');
+          } else if (!det.faceCentered && det.hasFace) {
+            setEnrollFaceDetected(false);
+            setEnrollStatus(det.occlusionReason || 'Center face directly inside circular reticle');
+          } else if (det.hasFace && !det.isOccluded && det.faceCentered) {
             setEnrollFaceDetected(true);
-            setEnrollStatus('✓ Face centered! Ready to enroll');
+            setEnrollStatus('✓ Face centered & uncovered! Ready to enroll');
           } else {
             setEnrollFaceDetected(false);
             setEnrollStatus('Position your face inside the circle');
@@ -128,10 +134,16 @@ export const Profile: React.FC = () => {
 
     try {
       const det = await detectFaceInStream(videoRef.current, canvasRef.current);
+      if (!det.hasFace || det.isOccluded || !det.faceCentered) {
+        setEnrollError(det.occlusionReason || 'Cannot enroll: face is covered or not clearly visible. Please uncover face completely.');
+        setIsProcessingEnrollment(false);
+        return;
+      }
+
       const photoUrl = canvasRef.current.toDataURL('image/jpeg', 0.85);
 
       if (!det.featureVector || det.featureVector.length === 0) {
-        setEnrollError('Could not reliably detect face features. Please look directly at camera.');
+        setEnrollError('Could not reliably extract facial features. Please look directly at camera.');
         setIsProcessingEnrollment(false);
         return;
       }
