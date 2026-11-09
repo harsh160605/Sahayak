@@ -16,9 +16,20 @@ import {
 
 export const AttendanceReports: React.FC = () => {
   const { currentUser } = useAuth();
-  const { courses, sessions, enrollments, attendanceRecords } = useData();
+  const { courses, sessions, enrollments, attendanceRecords, subjectAllocations } = useData();
 
-  const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
+  const myAllocations = subjectAllocations?.filter(a => 
+    a.teacherId === currentUser?.uid || 
+    (currentUser?.email && a.teacherEmail === currentUser.email)
+  ) || [];
+  const allocatedCourseIds = new Set(myAllocations.map(a => a.courseId));
+
+  const myCourses = courses.filter(c => 
+    c.teacherId === currentUser?.uid || 
+    (currentUser?.fullName && c.teacherName === currentUser.fullName) ||
+    allocatedCourseIds.has(c.id) ||
+    currentUser?.role === 'admin'
+  );
   const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
   const [defaulterThreshold, setDefaulterThreshold] = useState<number>(75);
 

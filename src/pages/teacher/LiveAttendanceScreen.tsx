@@ -596,11 +596,14 @@ export const LiveAttendanceScreen: React.FC = () => {
               <p className="text-xs text-navy-300">
                 Attendance for this lecture has been finalized and locked. Submissions are closed.
               </p>
+              <div className="p-3 bg-navy-800/90 rounded-lg border border-teal-500/30 text-xs font-mono text-teal-300">
+                Total Verified Present: <span className="font-bold text-white text-base">{sessionRecords.length}</span> students
+              </div>
               <button
-                onClick={() => navigate('/teacher/history')}
-                className="px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg text-xs font-bold transition-all border border-navy-700 shadow-subtle"
+                onClick={() => navigate(`/teacher/history?courseId=${session.courseId}&sessionId=${session.id}`)}
+                className="w-full px-5 py-2.5 bg-primary hover:bg-primary-hover active:bg-primary-dark text-white rounded-lg text-xs font-bold transition-all shadow-subtle active:scale-95 flex items-center justify-center gap-2"
               >
-                View Final Attendance Ledger
+                <span>View Final Attendance Ledger</span>
               </button>
             </div>
           )}

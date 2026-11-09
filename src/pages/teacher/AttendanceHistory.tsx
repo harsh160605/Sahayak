@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { 
@@ -18,20 +19,40 @@ import { formatDate, formatTime } from '../../lib/utils';
 import { AttendanceRecord } from '../../types';
 
 export const AttendanceHistory: React.FC = () => {
-  const { currentUser } = useAuth();
-  const { courses, sessions, attendanceRecords } = useData();
+  const [searchParams] = useSearchParams();
+  const paramCourseId = searchParams.get('courseId');
+  const paramSessionId = searchParams.get('sessionId');
 
-  const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(myCourses[0]?.id || '');
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('all');
+  const { currentUser } = useAuth();
+  const { courses, sessions, attendanceRecords, subjectAllocations } = useData();
+
+  const myAllocations = subjectAllocations?.filter(a => 
+    a.teacherId === currentUser?.uid || 
+    (currentUser?.email && a.teacherEmail === currentUser.email)
+  ) || [];
+  const allocatedCourseIds = new Set(myAllocations.map(a => a.courseId));
+
+  const myCourses = courses.filter(c => 
+    c.teacherId === currentUser?.uid || 
+    (currentUser?.fullName && c.teacherName === currentUser.fullName) ||
+    allocatedCourseIds.has(c.id) ||
+    currentUser?.role === 'admin'
+  );
+
+  const initialCourseId = paramCourseId && myCourses.some(c => c.id === paramCourseId)
+    ? paramCourseId
+    : (myCourses[0]?.id || paramCourseId || '');
+
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(initialCourseId);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(paramSessionId || 'all');
   const [inspectingRecord, setInspectingRecord] = useState<AttendanceRecord | null>(null);
 
-  const courseSessions = sessions.filter(s => s.courseId === selectedCourseId);
+  const courseSessions = sessions.filter(s => !selectedCourseId || s.courseId === selectedCourseId);
   const relevantRecords = attendanceRecords.filter(r => {
-    if (selectedSessionId === 'all') {
-      return r.courseId === selectedCourseId;
+    if (selectedSessionId !== 'all') {
+      return r.sessionId === selectedSessionId;
     }
-    return r.sessionId === selectedSessionId;
+    return !selectedCourseId || r.courseId === selectedCourseId;
   });
 
   // Export to CSV Generator

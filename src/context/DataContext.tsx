@@ -33,6 +33,7 @@ import {
 import { 
   collection, 
   doc, 
+  getDoc,
   setDoc, 
   updateDoc, 
   deleteDoc, 
@@ -40,7 +41,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, isLiveFirebaseConfigured } from '../config/firebase';
-import { calculateDistanceMeters } from '../lib/utils';
+import { calculateDistanceMeters, stripUndefined } from '../lib/utils';
 import { useAuth, DEMO_ADMIN, DEMO_TEACHER, DEMO_STUDENT } from './AuthContext';
 
 interface DataContextType {
@@ -1350,18 +1351,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Unauthorized: You can only end your own attendance sessions.');
     }
 
+    const sessionPresentCount = attendanceRecords.filter(r => r.sessionId === sessionId && r.status === 'present').length;
+    const finalTotalPresent = Math.max(session?.totalPresent || 0, sessionPresentCount);
+
     setSessions(prev => prev.map(s => s.id === sessionId ? { 
       ...s, 
       status: 'ended', 
       conductStatus: 'COMPLETED',
+      totalPresent: finalTotalPresent,
       endedAt: new Date().toISOString() 
     } : s));
+
+    try {
+      const saved = localStorage.getItem('smartattend_sessions');
+      if (saved) {
+        const list: AttendanceSession[] = JSON.parse(saved);
+        localStorage.setItem('smartattend_sessions', JSON.stringify(
+          list.map(s => s.id === sessionId ? {
+            ...s,
+            status: 'ended',
+            conductStatus: 'COMPLETED',
+            totalPresent: finalTotalPresent,
+            endedAt: new Date().toISOString()
+          } : s)
+        ));
+      }
+    } catch {}
 
     if (isLiveFirebaseConfigured) {
       try {
         await updateDoc(doc(db, 'attendanceSessions', sessionId), { 
           status: 'ended', 
           conductStatus: 'COMPLETED',
+          totalPresent: finalTotalPresent,
           endedAt: new Date().toISOString() 
         });
       } catch (err) {
@@ -1391,9 +1413,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const tokenTime = parseInt(tokenTimestampStr, 10);
     const now = Date.now();
 
-    const session = sessions.find(s => s.id === sessionId);
+    // 0. Resolve session (In-memory -> localStorage -> Firestore direct fetch fallback)
+    let session = sessions.find(s => s.id === sessionId);
     if (!session) {
-      return { success: false, message: 'Attendance session not found.' };
+      try {
+        const saved = localStorage.getItem('smartattend_sessions');
+        if (saved) {
+          const parsed: AttendanceSession[] = JSON.parse(saved);
+          session = parsed.find((s: AttendanceSession) => s.id === sessionId);
+        }
+      } catch {}
+    }
+
+    if (!session && isLiveFirebaseConfigured) {
+      try {
+        const snap = await getDoc(doc(db, 'attendanceSessions', sessionId));
+        if (snap.exists()) {
+          session = { id: snap.id, ...(snap.data() as any) };
+        }
+      } catch (e) {
+        console.warn('Direct fetch session in verify notice:', e);
+      }
+    }
+
+    if (!session) {
+      return { success: false, message: 'Attendance session not found or has expired.' };
     }
 
     if (session.status === 'ended') {
@@ -1405,7 +1449,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 1. Server-Side Expiry Check
-    const maxAllowedAgeMs = (session.qrRefreshIntervalSeconds * 1000) + 2500;
+    const maxAllowedAgeMs = (session.qrRefreshIntervalSeconds * 1000) + 3500;
     if (now - tokenTime > maxAllowedAgeMs) {
       return { 
         success: false, 
@@ -1441,7 +1485,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 3. Enrollment Check
     const isEnrolled = enrollments.some(e => e.courseId === session.courseId && e.studentUid === studentUid && e.status === 'active');
-    if (!isEnrolled) {
+    const isDivisionMatch = Boolean(
+      (session.divisionId && currentUser?.divisionId === session.divisionId) ||
+      (session.divisionName && currentUser?.divisionName === session.divisionName)
+    );
+    if (!isEnrolled && !isDivisionMatch && currentUser?.role === 'student') {
       return { 
         success: false, 
         message: `You are not enrolled in ${session.courseCode}. Please submit an enrollment request first.` 
@@ -1460,42 +1508,68 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 5. Record Attendance
     const markedAt = new Date().toISOString();
     const recordId = `rec_${sessionId}_${studentUid}`;
+
+    // Clean coordinates: only include distanceMeters if it's an actual number (never undefined)
+    const studentCoordinates = studentCoords ? {
+      latitude: studentCoords.latitude,
+      longitude: studentCoords.longitude,
+      ...(typeof distanceMeters === 'number' && !isNaN(distanceMeters) ? { distanceMeters } : {})
+    } : undefined;
+
     const newRecord: AttendanceRecord = {
       id: recordId,
+      organizationId: session.organizationId || currentUser?.organizationId || 'org_apex_tech',
+      organizationCode: session.organizationCode || currentUser?.organizationCode || 'APEX101',
       sessionId,
       courseId: session.courseId,
       studentUid,
-      studentName,
-      studentRollNo,
+      studentName: studentName || currentUser?.fullName || 'Student',
+      studentRollNo: studentRollNo || currentUser?.studentId || currentUser?.rollNo || 'N/A',
       markedAt,
       status: 'present',
       source: 'qr_scan',
       verified: true,
-      ...(studentCoords ? {
-        studentCoordinates: {
-          latitude: studentCoords.latitude,
-          longitude: studentCoords.longitude,
-          distanceMeters
-        }
-      } : {})
+      ...(studentCoordinates ? { studentCoordinates } : {})
     };
 
-    setAttendanceRecords(prev => [newRecord, ...prev]);
+    const cleanRecord = stripUndefined(newRecord);
+
+    // Update in-memory state and localStorage immediately
+    setAttendanceRecords(prev => [cleanRecord, ...prev.filter(r => r.id !== recordId)]);
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s));
+
     try {
       const savedRecs = localStorage.getItem('smartattend_attendance_records');
-      const list = savedRecs ? JSON.parse(savedRecs) : [];
-      localStorage.setItem('smartattend_attendance_records', JSON.stringify([newRecord, ...list]));
+      const list: AttendanceRecord[] = savedRecs ? JSON.parse(savedRecs) : [];
+      localStorage.setItem('smartattend_attendance_records', JSON.stringify([cleanRecord, ...list.filter(r => r.id !== recordId)]));
     } catch {}
 
+    try {
+      const savedSess = localStorage.getItem('smartattend_sessions');
+      const sList: AttendanceSession[] = savedSess ? JSON.parse(savedSess) : [];
+      localStorage.setItem('smartattend_sessions', JSON.stringify(
+        sList.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s)
+      ));
+    } catch {}
+
+    // Cloud Firestore Sync (Atomic and resilient with error reporting)
     if (isLiveFirebaseConfigured) {
       try {
-        await setDoc(doc(db, 'attendanceRecords', recordId), newRecord);
+        await setDoc(doc(db, 'attendanceRecords', recordId), cleanRecord);
+      } catch (err: any) {
+        console.error('CRITICAL: Firestore setDoc failed in verifyAndRecordAttendance:', err);
+        return {
+          success: false,
+          message: `Cloud sync notice: ${err.message || 'Failed to save attendance record to Firestore.'}`
+        };
+      }
+
+      try {
         await updateDoc(doc(db, 'attendanceSessions', sessionId), {
           totalPresent: (session.totalPresent || 0) + 1
         });
       } catch (err) {
-        console.warn('Firestore write notice for attendanceRecords (fallback to local state):', err);
+        console.warn('Firestore updateDoc notice for attendanceSessions totalPresent:', err);
       }
     }
 
@@ -1553,6 +1627,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const newRecord: AttendanceRecord = {
       id: recordId,
+      organizationId: session?.organizationId || currentUser?.organizationId || 'org_apex_tech',
+      organizationCode: session?.organizationCode || currentUser?.organizationCode || 'APEX101',
       sessionId,
       courseId: session?.courseId || '',
       studentUid,
@@ -1563,6 +1639,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       source: 'manual_teacher',
       verified: true
     };
+    const cleanRecord = stripUndefined(newRecord);
 
     setAttendanceRecords(prev => [newRecord, ...prev]);
     setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, totalPresent: (s.totalPresent || 0) + 1 } : s));
@@ -1581,7 +1658,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isLiveFirebaseConfigured) {
       try {
-        await setDoc(doc(db, 'attendanceRecords', recordId), newRecord);
+        await setDoc(doc(db, 'attendanceRecords', recordId), cleanRecord);
         if (session) {
           await updateDoc(doc(db, 'attendanceSessions', sessionId), {
             totalPresent: (session.totalPresent || 0) + 1

@@ -28,8 +28,7 @@ service cloud.firestore {
 
     // 5. Attendance Sessions Collection
     match /attendanceSessions/{sessionId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // 6. Attendance Records Collection
