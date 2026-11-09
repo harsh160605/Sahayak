@@ -487,17 +487,18 @@ export const AdminDashboard: React.FC = () => {
       {/* 1. Header: Executive Personalized Greeting & Key Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-warm-300 pb-5">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-navy-500 mb-1">
-            <span className="font-semibold text-primary">ADMIN CONSOLE</span>
-            <span>&bull;</span>
-            <span>{orgName}</span>
-            <span>&bull;</span>
-            <span>{orgCity}</span>
+          <div className="flex items-center gap-1.5 text-xs font-mono text-navy-500 mb-1">
+            <span className="hidden sm:inline font-semibold text-primary">ADMIN CONSOLE &bull;</span>
+            <span className="font-semibold text-navy-800 bg-warm-100 px-2 py-0.5 rounded border border-warm-200 text-[11px] truncate max-w-[220px] sm:max-w-none">
+              {orgName}
+            </span>
+            <span className="hidden sm:inline text-warm-400">&bull;</span>
+            <span className="hidden sm:inline text-navy-600">{orgCity}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-navy-900">
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-navy-900">
             {timeGreeting}, {firstName}
           </h1>
-          <p className="text-xs text-navy-600 mt-0.5">
+          <p className="hidden sm:block text-xs text-navy-600 mt-0.5">
             Institutional overview, academic hierarchy, and administrative controls.
           </p>
         </div>

@@ -212,26 +212,29 @@ export const StudentDashboard: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* 1. Header: Clean Personalized Greeting & Primary Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-warm-300 pb-5">
+      {/* 1. Header: Clean Personalized Greeting */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-warm-300 pb-3 sm:pb-5">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-navy-500 mb-1">
-            <span className="font-semibold text-primary">STUDENT PORTAL</span>
-            <span>&bull;</span>
-            <span>{currentUser?.yearOfStudy || 'Third Year'} ({currentUser?.divisionName || 'Div A'})</span>
-            <span>&bull;</span>
-            <span>Roll: {currentUser?.studentId || currentUser?.rollNo || '22CS042'}</span>
+          <div className="flex items-center gap-1.5 text-xs font-mono text-navy-500 mb-1">
+            <span className="hidden sm:inline font-semibold text-primary">STUDENT PORTAL &bull;</span>
+            <span className="font-semibold text-navy-800 bg-warm-100 px-2 py-0.5 rounded border border-warm-200 text-[11px]">
+              {currentUser?.divisionName || 'Div A'}
+            </span>
+            <span className="text-warm-400">&bull;</span>
+            <span className="text-navy-700">Roll: <strong className="font-mono text-navy-900">{currentUser?.studentId || currentUser?.rollNo || '22CS042'}</strong></span>
+            <span className="hidden sm:inline text-warm-400">&bull;</span>
+            <span className="hidden sm:inline text-navy-600">{currentUser?.yearOfStudy || 'Third Year'}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-navy-900">
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-navy-900">
             {timeGreeting}, {firstName}
           </h1>
-          <p className="text-xs text-navy-600 mt-0.5">
+          <p className="hidden sm:block text-xs text-navy-600 mt-0.5">
             {currentOrg?.name || 'Apex Institute of Technology'} &bull; Department of {currentUser?.department || 'Computer Engineering'}
           </p>
         </div>
 
-        {/* Primary Action Button */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Primary Action Button (Desktop Only — mobile uses persistent thumb-first bottom bar) */}
+        <div className="hidden sm:flex items-center gap-2.5 shrink-0">
           <Link
             to="/student/scan"
             className="px-5 py-2.5 min-h-[44px] rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-dark text-white text-xs font-semibold shadow-subtle transition-all duration-150 inline-flex items-center gap-2 active:scale-95"
@@ -252,7 +255,7 @@ export const StudentDashboard: React.FC = () => {
 
       {/* 2. Immediate Focal Action: Live Session in Progress OR Next Upcoming Lecture */}
       {liveSessions.length > 0 ? (
-        <div className="rounded-xl border border-teal-300 bg-teal-50/70 p-5 shadow-subtle space-y-3">
+        <div className="rounded-xl border border-teal-300 bg-teal-50/70 p-3.5 sm:p-5 shadow-subtle space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="relative flex h-2.5 w-2.5">
@@ -277,7 +280,7 @@ export const StudentDashboard: React.FC = () => {
               return (
                 <div 
                   key={session.id}
-                  className="p-4 rounded-lg bg-surface border border-teal-200 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="p-3.5 sm:p-4 rounded-lg bg-surface border border-teal-200 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -308,7 +311,7 @@ export const StudentDashboard: React.FC = () => {
                     ) : (
                       <Link
                         to="/student/scan"
-                        className="inline-flex items-center gap-2 px-5 py-2 min-h-[44px] rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-subtle transition-all active:scale-95"
+                        className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2 min-h-[44px] rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-bold shadow-subtle transition-all active:scale-95"
                       >
                         <QrCode className="h-4 w-4" />
                         <span>Scan Now</span>
@@ -322,13 +325,13 @@ export const StudentDashboard: React.FC = () => {
         </div>
       ) : (
         /* Minimal Next Lecture Card */
-        <div className="rounded-xl border border-warm-300 bg-surface p-4 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-warm-100 text-navy-700 shrink-0">
-              <Clock className="h-5 w-5 text-primary" aria-hidden="true" />
+        <div className="rounded-xl border border-warm-300 bg-surface p-3 sm:p-4 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-warm-100 text-navy-700 shrink-0">
+              <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-primary" aria-hidden="true" />
             </div>
             <div>
-              <span className="text-[11px] font-mono font-semibold text-navy-500 uppercase tracking-wide">
+              <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-navy-500 uppercase tracking-wide">
                 {isWeekendDemo ? 'Upcoming Monday Class' : 'Next Scheduled Class'}
               </span>
               {currentActiveSlot ? (
@@ -353,35 +356,35 @@ export const StudentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Concise 3-Card Metrics Row (Essential Information Only) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* 3. Concise Metrics Row (Simplified 2-Column on Mobile, 3-Card on Desktop) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4">
         {/* Metric 1: Overall Attendance */}
-        <div className="p-5 rounded-xl bg-surface border border-warm-300 shadow-subtle space-y-2">
+        <div className="p-3.5 sm:p-5 rounded-xl bg-surface border border-warm-300 shadow-subtle space-y-1.5 sm:space-y-2">
           <div className="flex items-center justify-between text-navy-600">
-            <span className="text-xs font-mono font-semibold uppercase tracking-wider">Overall Attendance</span>
-            <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
+            <span className="text-[10px] sm:text-xs font-mono font-semibold uppercase tracking-wider">Attendance</span>
+            <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" aria-hidden="true" />
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className={`text-3xl font-bold font-mono ${overallPercentage >= 75 ? 'text-teal-800' : 'text-amber-700'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+            <span className={`text-2xl sm:text-3xl font-bold font-mono ${overallPercentage >= 75 ? 'text-teal-800' : 'text-amber-700'}`}>
               {overallPercentage}%
             </span>
-            <span className="text-xs text-navy-500 font-mono">
+            <span className="text-[10px] sm:text-xs text-navy-500 font-mono">
               ({attendedCount}/{totalConducted} classes)
             </span>
           </div>
-          <div className="w-full bg-warm-200 h-2 rounded-full overflow-hidden">
+          <div className="w-full bg-warm-200 h-1.5 sm:h-2 rounded-full overflow-hidden">
             <div 
               className={`h-full ${overallPercentage >= 75 ? 'bg-primary' : 'bg-amber-600'}`} 
               style={{ width: `${Math.min(100, overallPercentage)}%` }} 
             />
           </div>
-          <span className="text-[11px] text-navy-500 font-mono block">
-            Threshold: &ge;75% required
+          <span className="text-[10px] sm:text-[11px] text-navy-500 font-mono block">
+            Target: &ge;75% required
           </span>
         </div>
 
         {/* Metric 2: Attendance Safety Margin */}
-        <div className={`p-5 rounded-xl border shadow-subtle space-y-2 ${
+        <div className={`p-3.5 sm:p-5 rounded-xl border shadow-subtle space-y-1.5 sm:space-y-2 ${
           safeBufferMiss > 0 
             ? 'bg-teal-50/40 border-teal-200' 
             : isBelowThreshold 
@@ -389,38 +392,38 @@ export const StudentDashboard: React.FC = () => {
               : 'bg-surface border-warm-300'
         }`}>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-semibold uppercase tracking-wider text-navy-700 flex items-center gap-1">
-              <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" />
-              <span>Safety Status</span>
+            <span className="text-[10px] sm:text-xs font-mono font-semibold uppercase tracking-wider text-navy-700 flex items-center gap-1">
+              <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" aria-hidden="true" />
+              <span>Safety</span>
             </span>
-            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
+            <span className={`text-[9px] sm:text-[10px] font-mono font-bold px-1.5 sm:px-2 py-0.5 rounded ${
               safeBufferMiss > 0 ? 'bg-teal-100 text-teal-800' : 'bg-amber-100 text-amber-900'
             }`}>
-              {safeBufferMiss > 0 ? 'Good Standing' : 'Defaulter Risk'}
+              {safeBufferMiss > 0 ? 'Good' : 'Risk'}
             </span>
           </div>
 
-          <div className="text-2xl font-bold font-mono text-navy-900">
+          <div className="text-xl sm:text-2xl font-bold font-mono text-navy-900">
             {safeBufferMiss > 0 ? (
-              <span>+{safeBufferMiss} <span className="text-xs font-normal text-navy-600">safe buffer</span></span>
+              <span>+{safeBufferMiss} <span className="text-[10px] sm:text-xs font-normal text-navy-600">buffer</span></span>
             ) : isBelowThreshold ? (
-              <span className="text-amber-800">{Math.max(requiredCatchupAttend, 1)} <span className="text-xs font-normal text-amber-700">classes needed</span></span>
+              <span className="text-amber-800">{Math.max(requiredCatchupAttend, 1)} <span className="text-[10px] sm:text-xs font-normal text-amber-700">needed</span></span>
             ) : (
-              <span>0 <span className="text-xs font-normal text-navy-600">buffer classes</span></span>
+              <span>0 <span className="text-[10px] sm:text-xs font-normal text-navy-600">buffer</span></span>
             )}
           </div>
 
-          <p className="text-xs text-navy-600">
+          <p className="text-[10px] sm:text-xs text-navy-600 line-clamp-1 sm:line-clamp-none">
             {safeBufferMiss > 0 
-              ? `Can miss up to ${safeBufferMiss} lecture${safeBufferMiss > 1 ? 's' : ''} safely.`
+              ? `Can miss up to ${safeBufferMiss} safely.`
               : isBelowThreshold 
-                ? `Attend next ${Math.max(requiredCatchupAttend, 1)} sessions to restore 75%.`
-                : 'At 75% boundary; do not miss next session.'}
+                ? `Attend next ${Math.max(requiredCatchupAttend, 1)} sessions.`
+                : 'At 75% boundary.'}
           </p>
         </div>
 
-        {/* Metric 3: Today's Schedule Overview */}
-        <div className="p-5 rounded-xl bg-surface border border-warm-300 shadow-subtle space-y-2">
+        {/* Metric 3: Today's Schedule Overview (Desktop Only - on mobile, schedule section is right below) */}
+        <div className="hidden sm:block p-5 rounded-xl bg-surface border border-warm-300 shadow-subtle space-y-2">
           <div className="flex items-center justify-between text-navy-600">
             <span className="text-xs font-mono font-semibold uppercase tracking-wider">Today's Schedule</span>
             <GraduationCap className="h-4 w-4 text-navy-500" aria-hidden="true" />

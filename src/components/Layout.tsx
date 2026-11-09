@@ -103,9 +103,9 @@ export const Layout: React.FC = () => {
             </button>
             <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-navy-600 font-mono truncate">
               <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
-              <span className="font-semibold tracking-wider text-[11px] sm:text-xs">SMARTATTEND</span>
-              <span className="text-warm-400">/</span>
-              <span className="font-sans text-navy-700 font-medium truncate text-xs">
+              <span className="font-semibold tracking-wider text-[11px] sm:text-xs text-navy-900">SMARTATTEND</span>
+              <span className="hidden sm:inline text-warm-400">/</span>
+              <span className="hidden sm:inline font-sans text-navy-700 font-medium truncate text-xs">
                 {currentUser?.department || 'Department of Engineering'}
               </span>
             </div>

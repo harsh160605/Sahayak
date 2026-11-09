@@ -321,27 +321,28 @@ export const TeacherDashboard: React.FC = () => {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* 1. Header: Greeting & Primary Academic Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-warm-300 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-warm-300 pb-3 sm:pb-5">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-navy-500 mb-1">
-            <span className="font-semibold text-primary">FACULTY CONSOLE</span>
-            <span>&bull;</span>
-            <span>{todayDayName}, {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          <div className="flex items-center gap-1.5 text-xs font-mono text-navy-500 mb-1">
+            <span className="hidden sm:inline font-semibold text-primary">FACULTY CONSOLE &bull;</span>
+            <span className="font-semibold text-navy-800 bg-warm-100 px-2 py-0.5 rounded border border-warm-200 text-[11px]">
+              {todayDayName}, {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-navy-900">
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-navy-900">
             {timeGreeting}, {currentUser?.fullName}
           </h1>
-          <p className="text-xs text-navy-600 mt-0.5">
+          <p className="hidden sm:block text-xs text-navy-600 mt-0.5">
             {currentOrg?.name || 'Apex Institute of Technology'} &bull; Department of {currentUser?.department || 'Computer Engineering'}
           </p>
         </div>
 
         {/* Action Buttons: Timetable-Driven + Extra Lecture */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={handleOpenExtraModal}
-            className="px-3.5 py-2.5 min-h-[44px] rounded-lg border border-warm-300 bg-surface hover:bg-warm-100 text-navy-800 text-xs font-semibold shadow-subtle transition-all duration-150 inline-flex items-center gap-2 active:scale-95"
+            className="flex-1 sm:flex-none px-3.5 py-2 min-h-[44px] rounded-lg border border-warm-300 bg-surface hover:bg-warm-100 text-navy-800 text-xs font-semibold shadow-subtle transition-all duration-150 inline-flex items-center justify-center gap-2 active:scale-95"
             title="Conduct an unscheduled or compensatory class outside regular timetable"
           >
             <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
@@ -350,7 +351,7 @@ export const TeacherDashboard: React.FC = () => {
 
           <Link
             to="/teacher/timetable"
-            className="px-3.5 py-2.5 min-h-[44px] rounded-lg border border-warm-300 bg-surface hover:bg-warm-100 text-navy-800 text-xs font-semibold transition-colors inline-flex items-center gap-1.5"
+            className="px-3.5 py-2 min-h-[44px] rounded-lg border border-warm-300 bg-surface hover:bg-warm-100 text-navy-800 text-xs font-semibold transition-colors inline-flex items-center gap-1.5"
             title="View Official Master Timetable"
           >
             <Calendar className="h-4 w-4 text-navy-500" aria-hidden="true" />
