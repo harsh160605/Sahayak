@@ -100,3 +100,4 @@ export function setStoredDeviceId(newId: string): void {
     localStorage.setItem(STORAGE_KEY, newId);
   }
 }
+

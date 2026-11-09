@@ -222,3 +222,4 @@ export const DeviceLockedScreen: React.FC<DeviceLockedScreenProps> = ({ clientDe
     </div>
   );
 };
+

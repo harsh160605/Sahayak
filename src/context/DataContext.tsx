@@ -499,6 +499,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, err => console.warn('Subject allocations sync notice:', err));
 
+    // 11. Device Change Requests (Real-time sync to Department Faculty)
+    const unsubDeviceRequests = onSnapshot(collection(db, 'deviceChangeRequests'), (snapshot) => {
+      const items: DeviceChangeRequest[] = [];
+      snapshot.forEach((docSnap) => {
+        items.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      if (items.length > 0) {
+        items.sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
+        setDeviceChangeRequests(prev => {
+          const ids = new Set(items.map(i => i.id));
+          const localOnly = prev.filter(p => !ids.has(p.id));
+          return [...items, ...localOnly];
+        });
+      }
+    }, err => console.warn('Device change requests sync notice:', err));
+
     return () => {
       unsubCourses();
       unsubEnrollments();
@@ -510,8 +526,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubDepartments();
       unsubDivisions();
       unsubAllocations();
+      unsubDeviceRequests();
     };
   }, [isLiveFirebaseConfigured]);
+
+  // Synchronize cross-tab and cross-window local state changes
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'smartattend_device_requests' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setDeviceChangeRequests(parsed);
+        } catch {}
+      }
+      if (e.key === 'smartattend_all_users' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setOrganizationUsers(parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // Course actions
   const addCourse = async (data: Omit<Course, 'id' | 'createdAt' | 'status' | 'enrolledCount'>) => {
@@ -2263,6 +2300,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const reqId = `dreq_${Date.now()}`;
     const newReq: DeviceChangeRequest = {
       id: reqId,
+      organizationId: currentUser.organizationId || 'org_apex_tech',
+      organizationCode: currentUser.organizationCode || 'APEX101',
       studentUid: currentUser.uid,
       studentName: currentUser.fullName,
       studentRollNo: currentUser.studentId || currentUser.rollNo || 'N/A',
@@ -2282,7 +2321,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       requestedAt: new Date().toISOString()
     };
 
-    setDeviceChangeRequests(prev => [newReq, ...prev]);
+    setDeviceChangeRequests(prev => {
+      const next = [newReq, ...prev.filter(r => r.id !== reqId)];
+      try {
+        localStorage.setItem('smartattend_device_requests', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
     setOrganizationUsers(prev => prev.map(u => u.uid === currentUser.uid ? { ...u, deviceStatus: 'change_pending' } : u));
     if (currentUser) {

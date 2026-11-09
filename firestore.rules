@@ -67,5 +67,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAuthenticated();
     }
+
+    // 12. Device Change Requests Collection (Department Faculty Authorization)
+    match /deviceChangeRequests/{requestId} {
+      allow read, write: if true;
+    }
   }
 }

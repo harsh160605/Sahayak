@@ -115,6 +115,8 @@ export interface UserProfile {
 
 export interface DeviceChangeRequest {
   id: string;
+  organizationId?: string;
+  organizationCode?: string;
   studentUid: string;
   studentName: string;
   studentRollNo: string;

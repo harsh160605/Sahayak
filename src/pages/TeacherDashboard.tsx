@@ -124,13 +124,31 @@ export const TeacherDashboard: React.FC = () => {
   const [rejectReasonInput, setRejectReasonInput] = useState('');
   const [deviceActionNotice, setDeviceActionNotice] = useState<string | null>(null);
 
-  // Scoped to this department teacher's department
-  const deptDeviceRequests = deviceChangeRequests.filter(
-    r => !currentUser?.department || 
-         r.department.toLowerCase().includes(currentUser.department.toLowerCase()) || 
-         currentUser.department.toLowerCase().includes(r.department.toLowerCase()) ||
-         r.departmentId === currentUser.departmentId
+  // Scoped to this department teacher's department or enrolled students
+  const myEnrolledStudentUids = new Set(
+    enrollments.filter(e => myCourseIds.includes(e.courseId)).map(e => e.studentUid)
   );
+
+  const deptDeviceRequests = deviceChangeRequests.filter(r => {
+    // 1. If teacher has no department configured, review all
+    if (!currentUser?.department) return true;
+
+    // 2. Direct department ID match
+    if (r.departmentId && currentUser.departmentId && r.departmentId === currentUser.departmentId) return true;
+
+    // 3. Department name fuzzy / case-insensitive match
+    const tDept = (currentUser.department || '').toLowerCase().trim();
+    const sDept = (r.department || '').toLowerCase().trim();
+    if (sDept && (tDept.includes(sDept) || sDept.includes(tDept))) return true;
+
+    // 4. Student is enrolled in one of this teacher's active courses
+    if (myEnrolledStudentUids.has(r.studentUid)) return true;
+
+    // 5. Fallback for unassigned/general department requests
+    if (!r.department || r.department === 'General') return true;
+
+    return false;
+  });
   const pendingDeviceRequests = deptDeviceRequests.filter(r => r.status === 'pending');
 
   const handleApproveDevice = async (reqId: string, studentName: string) => {
