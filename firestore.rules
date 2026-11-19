@@ -28,17 +28,48 @@ service cloud.firestore {
 
     // 5. Attendance Sessions Collection
     match /attendanceSessions/{sessionId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // 6. Attendance Records Collection
     match /attendanceRecords/{recordId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     // 7. Timetable Schedule Collection
     match /timetable/{slotId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 8. Organizations Collection
+    // Read is allowed so students & faculty can verify organization codes before registration
+    match /organizations/{orgId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 9. Departments Collection
+    match /departments/{deptId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 10. Divisions Collection
+    match /divisions/{divId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 11. Subject Allocations Collection (Managed by Department Admin)
+    match /subjectAllocations/{allocId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // 12. Device Change Requests Collection (Department Faculty Authorization)
+    match /deviceChangeRequests/{requestId} {
+      allow read, write: if true;
     }
   }
 }

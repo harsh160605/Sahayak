@@ -54,3 +54,23 @@ export function calculateDistanceMeters(
 
   return Math.round(R * c);
 }
+
+/**
+ * Recursively removes all keys with `undefined` values from an object or array.
+ * Essential for Firestore operations, which throw runtime exceptions on undefined values.
+ */
+export function stripUndefined<T>(obj: T): T {
+  if (obj === null || obj === undefined || typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(stripUndefined) as any;
+  }
+  const clean: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = stripUndefined(value);
+    }
+  }
+  return clean;
+}

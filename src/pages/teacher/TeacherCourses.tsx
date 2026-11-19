@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { Plus, BookOpen, Users, QrCode, Search, Filter } from 'lucide-react';
+import { Plus, BookOpen, Users, QrCode, Search, Filter, Layers, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const TeacherCourses: React.FC = () => {
   const { currentUser } = useAuth();
-  const { courses, addCourse } = useData();
+  const { courses, addCourse, subjectAllocations } = useData();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -19,7 +19,19 @@ export const TeacherCourses: React.FC = () => {
   const [academicYear, setAcademicYear] = useState('2024-2025');
   const [description, setDescription] = useState('');
 
-  const myCourses = courses.filter(c => c.teacherId === currentUser?.uid);
+  // Resolve courses assigned to this faculty either by direct ownership or official Department Admin allocation
+  const myAllocations = subjectAllocations.filter(a => 
+    a.teacherId === currentUser?.uid || 
+    (currentUser?.email && a.teacherEmail === currentUser.email)
+  );
+  const allocatedCourseIds = new Set(myAllocations.map(a => a.courseId));
+
+  const myCourses = courses.filter(c => 
+    c.teacherId === currentUser?.uid || 
+    (currentUser?.fullName && c.teacherName === currentUser.fullName) ||
+    allocatedCourseIds.has(c.id)
+  );
+
   const filteredCourses = myCourses.filter(c => 
     c.courseCode.toLowerCase().includes(search.toLowerCase()) ||
     c.courseName.toLowerCase().includes(search.toLowerCase())
@@ -69,7 +81,7 @@ export const TeacherCourses: React.FC = () => {
 
         <button
           onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-lg bg-primary hover:bg-primary-hover text-surface text-xs font-semibold shadow-subtle transition-all active:scale-95"
         >
           <Plus className="h-4 w-4" />
           <span>Create New Course</span>
@@ -99,40 +111,66 @@ export const TeacherCourses: React.FC = () => {
             <p className="text-xs text-navy-500 mt-1">Create a new course to begin tracking attendance.</p>
           </div>
         ) : (
-          filteredCourses.map(course => (
-            <div 
-              key={course.id}
-              className="p-5 rounded-lg bg-surface border border-warm-300 shadow-subtle hover:border-warm-400 transition-all flex flex-col justify-between space-y-4"
-            >
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-warm-200 text-navy-800 border border-warm-300">
-                    {course.courseCode}
-                  </span>
-                  <span className="text-[11px] font-mono text-navy-500">{course.semester}</span>
-                </div>
-                <h3 className="text-sm font-semibold text-navy-900 leading-snug">{course.courseName}</h3>
-                <p className="text-xs text-navy-600 line-clamp-2 leading-relaxed">{course.description}</p>
-              </div>
+          filteredCourses.map(course => {
+            const alloc = myAllocations.find(a => a.courseId === course.id);
+            return (
+              <div 
+                key={course.id}
+                className="p-5 rounded-lg bg-surface border border-warm-300 shadow-subtle hover:border-warm-400 transition-all flex flex-col justify-between space-y-4"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-warm-200 text-navy-800 border border-warm-300">
+                      {course.courseCode}
+                    </span>
+                    <span className="text-[11px] font-mono text-navy-500">{course.semester}</span>
+                  </div>
+                  <h3 className="text-sm font-semibold text-navy-900 leading-snug">{course.courseName}</h3>
+                  <p className="text-xs text-navy-600 line-clamp-2 leading-relaxed">{course.description}</p>
 
-              <div className="pt-3 border-t border-warm-200 flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-navy-600 font-mono">
-                  <Users className="h-3.5 w-3.5 text-navy-500" />
-                  <span>{course.enrolledCount || 0} enrolled</span>
+                  {/* Subject Allocation Badge */}
+                  {alloc && (
+                    <div className="pt-1 flex flex-wrap items-center gap-1.5">
+                      {alloc.divisionName && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
+                          <Layers className="h-2.5 w-2.5" />
+                          <span>{alloc.divisionName}</span>
+                        </span>
+                      )}
+                      {alloc.batch && alloc.batch !== 'All' && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warm-200 text-navy-700">
+                          {alloc.batch}
+                        </span>
+                      )}
+                      {alloc.weeklyHours && (
+                        <span className="text-[10px] font-mono text-navy-500 ml-auto">
+                          {alloc.weeklyHours} hrs/wk
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Link
-                    to={`/teacher/take-attendance?courseId=${course.id}`}
-                    className="p-1.5 rounded bg-warm-100 hover:bg-primary hover:text-white border border-warm-300 text-navy-700 transition-colors"
-                    title="Start Live Attendance"
-                  >
-                    <QrCode className="h-4 w-4" />
-                  </Link>
+                <div className="pt-3 border-t border-warm-200 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs text-navy-600 font-mono">
+                    <Users className="h-3.5 w-3.5 text-navy-500" />
+                    <span>{course.enrolledCount || 0} enrolled</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={`/teacher/take-attendance?courseId=${course.id}`}
+                      className="px-2.5 py-1.5 min-h-[36px] rounded bg-warm-100 hover:bg-primary hover:text-white border border-warm-300 text-navy-700 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors"
+                      title="Start Live Attendance"
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                      <span>Take Attendance</span>
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 

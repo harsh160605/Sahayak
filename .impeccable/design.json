@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T13:05:00.000Z",
+  "title": "Design System: SmartAttend",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Restrained Academic Teal",
+        "canonical": "#0D9488",
+        "tonalRamp": [
+          "#115E59",
+          "#0F766E",
+          "#0D9488",
+          "#14B8A6",
+          "#2DD4BF",
+          "#5EEAD4",
+          "#99F6E4",
+          "#CCFBF1",
+          "#F0FDFA"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Deep Academic Teal",
+        "canonical": "#0F766E",
+        "tonalRamp": [
+          "#134E4A",
+          "#115E59",
+          "#0F766E",
+          "#0D9488",
+          "#14B8A6",
+          "#2DD4BF",
+          "#5EEAD4",
+          "#CCFBF1"
+        ]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Warm Archival Canvas",
+        "canonical": "#FBFBFA",
+        "tonalRamp": [
+          "#1E293B",
+          "#475569",
+          "#94A3B8",
+          "#D3D2CA",
+          "#E5E4DE",
+          "#F0EFEA",
+          "#F7F7F5",
+          "#FBFBFA"
+        ]
+      },
+      "neutral-surface": {
+        "role": "neutral",
+        "displayName": "Crisp Card Surface",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "#334155",
+          "#64748B",
+          "#CBD5E1",
+          "#E2E8F0",
+          "#F1F5F9",
+          "#F8FAFC",
+          "#FFFFFF"
+        ]
+      },
+      "neutral-border": {
+        "role": "neutral",
+        "displayName": "Ghost Border Sand",
+        "canonical": "#F0EFEA",
+        "tonalRamp": [
+          "#475569",
+          "#64748B",
+          "#94A3B8",
+          "#CBD5E1",
+          "#D3D2CA",
+          "#E5E4DE",
+          "#F0EFEA"
+        ]
+      },
+      "ink-primary": {
+        "role": "neutral",
+        "displayName": "Deep Ink Navy",
+        "canonical": "#0F172A",
+        "tonalRamp": [
+          "#020617",
+          "#0F172A",
+          "#1E293B",
+          "#334155",
+          "#475569",
+          "#64748B",
+          "#94A3B8",
+          "#CBD5E1"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Top-level institutional dashboard headings and live projector session titles."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section headers, modal titles, and card group titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Department titles, course names, and division subtitles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Core table data, form labels, administrative instructions, and student records."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table column headers, status badges, join codes, and metadata tags."
+      }
+    },
+    "shadows": [
+      {
+        "name": "subtle",
+        "value": "0 1px 2px 0 rgba(15, 23, 42, 0.04), 0 1px 3px 0 rgba(15, 23, 42, 0.02)",
+        "purpose": "Default elevation for container cards and table panels."
+      },
+      {
+        "name": "card-focus",
+        "value": "0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 2px 4px -1px rgba(15, 23, 42, 0.03)",
+        "purpose": "Active or highlighted timetable slots and interactive selector panels."
+      },
+      {
+        "name": "elevated",
+        "value": "0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.04)",
+        "purpose": "Floating dialogue boxes, dropdown menus, and full-screen projector controls."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-subtle",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Smooth micro-interactions for button hover states, row selections, and drawer transitions."
+      },
+      {
+        "name": "duration-fast",
+        "value": "150ms",
+        "purpose": "Instant responsive feedback on buttons and interactive controls."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary call-to-action button for initiating sessions, publishing timetables, or confirming administrative changes.",
+      "html": "<button class=\"ds-btn-primary\"><svg class=\"ds-btn-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M5 12h14M12 5l7 7-7 7\"/></svg><span>Publish Timetable</span></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #0D9488; color: #FFFFFF; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 13px; font-weight: 600; line-height: 1; padding: 10px 18px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1), transform 150ms ease; box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05); } .ds-btn-primary:hover { background: #0F766E; } .ds-btn-primary:active { transform: scale(0.98); } .ds-btn-primary:focus-visible { outline: 2px solid #0D9488; outline-offset: 2px; } .ds-btn-icon { width: 15px; height: 15px; stroke: currentColor; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Subtle button used for secondary actions, modal dismissals, or filtering controls.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; background: #F7F7F5; color: #0F172A; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 13px; font-weight: 600; line-height: 1; padding: 10px 18px; border-radius: 8px; border: 1px solid #F0EFEA; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease; } .ds-btn-secondary:hover { background: #F0EFEA; border-color: #E5E4DE; } .ds-btn-secondary:focus-visible { outline: 2px solid #64748B; outline-offset: 2px; }"
+    },
+    {
+      "name": "Default Card",
+      "kind": "card",
+      "refersTo": "card-default",
+      "description": "Standard container card for division schedules, department info, and administrative summaries.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-header\"><span class=\"ds-card-pill\">DIV-A</span><h3 class=\"ds-card-title\">Computer Science & Engineering</h3></div><p class=\"ds-card-desc\">First Year &bull; 64 Enrolled Students &bull; Class Teacher: Dr. Alok Sharma</p></div>",
+      "css": ".ds-card { background: #FFFFFF; border: 1px solid #F0EFEA; border-radius: 12px; padding: 20px 24px; box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04); font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; } .ds-card-pill { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: #0D9488; background: #F0FDFA; border: 1px solid #CCFBF1; padding: 2px 8px; border-radius: 9999px; } .ds-card-title { font-size: 16px; font-weight: 700; color: #0F172A; margin: 0; } .ds-card-desc { font-size: 13px; color: #475569; margin: 0; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Standard text input field for codes, roll numbers, names, and filters.",
+      "html": "<div class=\"ds-input-group\"><label class=\"ds-label\">Department Code</label><input type=\"text\" class=\"ds-input\" placeholder=\"e.g. COMP-ENG\" /></div>",
+      "css": ".ds-input-group { display: flex; flex-direction: column; gap: 6px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; } .ds-label { font-size: 12px; font-weight: 600; color: #334155; } .ds-input { background: #FFFFFF; border: 1px solid #F0EFEA; border-radius: 8px; padding: 9px 12px; font-size: 13px; color: #0F172A; outline: none; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input:focus { border-color: #0D9488; box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15); } .ds-input::placeholder { color: #94A3B8; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "badge-pill",
+      "description": "Defaulter, verified attendance, or room allocation indicator.",
+      "html": "<span class=\"ds-badge-warning\">Defaulter &bull; 68%</span>",
+      "css": ".ds-badge-warning { display: inline-flex; align-items: center; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: #92400E; background: #FEF3C7; border: 1px solid #FDE68A; padding: 3px 10px; border-radius: 9999px; letter-spacing: 0.02em; }"
+    },
+    {
+      "name": "Navigation Link",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Sidebar navigation item with active inverted state.",
+      "html": "<a class=\"ds-nav-active\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/></svg><span>Master Timetable</span></a>",
+      "css": ".ds-nav-active { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 12px; font-weight: 600; background: #0F172A; color: #FFFFFF; text-decoration: none; box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05); } .ds-nav-icon { width: 16px; height: 16px; stroke: currentColor; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Academic Ledger",
+    "overview": "SmartAttend embodies the calm, authoritative tactile clarity of a scholarly ledger combined with the cryptographic rigor of modern academic governance. Designed specifically for university lecture halls, administrative offices, and high-stakes attendance tracking, the interface prioritizes high information density, rapid scanability, and uncompromised legibility under demanding ambient conditions.\n\nSurfaces evoke physical warm archival paper, grounded by deep ink typography and accented with a disciplined, restrained teal. The layout establishes order through subtle structural borders and typographic hierarchy rather than heavy drop shadows or unnecessary embellishments. Every interactive element feels precise, deliberate, and stable.\n\nWe explicitly reject hyperactive SaaS tropes: no purple neon glows, no synthetic floating glassmorphism, no rainbow gradients, and no gratuitous motion. Simultaneously, we reject the drab, sterile grey grids of legacy ERPs. SmartAttend is warm, dignified, and editorial.",
+    "keyCharacteristics": [
+      "Warm Archival Substrates: Restful off-white backgrounds that reduce eye fatigue during long administrative sessions.",
+      "Disciplined Chromatic Accent: Teal serves as an operational beacon, strictly budgeted across the screen.",
+      "Monospace Rigor: Cryptographic codes, join tokens, student IDs, and time slots are anchored in monospace clarity.",
+      "Tonal Layering: Depth is achieved through warm neutral boundaries and ghost borders rather than heavy drop shadows."
+    ],
+    "rules": [
+      {
+        "name": "The 10% Teal Rule",
+        "body": "Teal is an active focal point and must occupy ≤10% of any viewport. It must never be applied as full-screen backgrounds, wide banners, or decorative wallpaper. Its power comes from scarcity.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Status Rule",
+        "body": "Semantic alerts follow traditional academic conventions: Amber (#B45309) for enrollment warnings and defaulter lists (<75%), Crimson (#B91C1C) for security/conflict errors, and Emerald/Teal (#0D9488) for verified attendance.",
+        "section": "colors"
+      },
+      {
+        "name": "The Monospace Token Rule",
+        "body": "All system codes, cryptographic seeds, student roll numbers, division letters, and clock timestamps (HH:MM) must be rendered in JetBrains Mono (font-mono) to guarantee tabular alignment and zero character ambiguity.",
+        "section": "typography"
+      },
+      {
+        "name": "The Strict Hierarchy Rule",
+        "body": "Never skip a typographic tier to emphasize content. An element below a Headline must be a Title or Body, never another Headline with a different color.",
+        "section": "typography"
+      },
+      {
+        "name": "The Ghost Border Rule",
+        "body": "Every card, panel, and table container must carry a 1px border in Ghost Border Sand (#F0EFEA). Shadows alone are never trusted to define surface boundaries.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Flat-At-Rest Rule",
+        "body": "Non-modal surfaces must remain completely flat at rest. Elevation appears only as a functional response to hover, keyboard focus, or modal presentation.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do wrap every card and table container in a 1px border of Ghost Border Sand (#F0EFEA).",
+      "Do format all academic IDs, roll numbers, timetable hours (09:15), and join tokens in monospace typography (font-mono).",
+      "Do budget Teal to ≤10% of any viewport, using it solely for primary actions and active states.",
+      "Do maintain compact vertical rhythm (py-2 to py-3) in data tables to support high-density administrative review.",
+      "Do provide immediate tactile feedback on all action buttons with subtle hover transitions and loading spinners."
+    ],
+    "donts": [
+      "Don't use multi-color neon gradients, purple button glows, or glassmorphic blur effects.",
+      "Don't use heavy drop shadows (shadow-2xl or shadow-xl) on static cards.",
+      "Don't use pure stark black (#000000) for body text; use Deep Ink Navy (#0F172A).",
+      "Don't hide academic roll numbers or timetable conflicts inside nested tooltips; display them visibly with clear status indicators.",
+      "Don't use unstyled browser form controls; always apply the standardized input styling with explicit focus rings."
+    ]
+  }
+}
+
