@@ -29,9 +29,35 @@ import {
   CheckCircle2,
   X,
   Eye,
-  Filter
+  Filter,
+  UserCheck,
+  Zap,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { DayOfWeek, TimetableSlot, SessionType, YearOfStudy } from '../types';
+
+export interface CollegePeriodPreset {
+  id: string;
+  name: string;
+  shortLabel: string;
+  startTime: string;
+  endTime: string;
+  sessionType: SessionType;
+  defaultRoom: string;
+  notes?: string;
+}
+
+export const COLLEGE_PERIODS: CollegePeriodPreset[] = [
+  { id: 'p1', name: 'Period 1', shortLabel: '09:00–10:00', startTime: '09:00', endTime: '10:00', sessionType: 'lecture', defaultRoom: 'Hall 301' },
+  { id: 'p2', name: 'Period 2', shortLabel: '10:00–11:00', startTime: '10:00', endTime: '11:00', sessionType: 'lecture', defaultRoom: 'Hall 301' },
+  { id: 'recess', name: 'Recess Break', shortLabel: '11:00–11:15', startTime: '11:00', endTime: '11:15', sessionType: 'break', defaultRoom: '', notes: 'Morning Tea / Recess' },
+  { id: 'p3', name: 'Period 3', shortLabel: '11:15–12:15', startTime: '11:15', endTime: '12:15', sessionType: 'lecture', defaultRoom: 'Hall 301' },
+  { id: 'p4', name: 'Period 4', shortLabel: '12:15–13:15', startTime: '12:15', endTime: '13:15', sessionType: 'lecture', defaultRoom: 'Hall 301' },
+  { id: 'lunch', name: 'Lunch Recess', shortLabel: '13:15–14:00', startTime: '13:15', endTime: '14:00', sessionType: 'break', defaultRoom: '', notes: 'Lunch Break' },
+  { id: 'lab1', name: 'Lab Practical (2h)', shortLabel: '14:00–16:00', startTime: '14:00', endTime: '16:00', sessionType: 'practical', defaultRoom: 'Computer Lab 1' },
+  { id: 'lab2', name: 'Lab (Late Block)', shortLabel: '15:00–17:00', startTime: '15:00', endTime: '17:00', sessionType: 'practical', defaultRoom: 'Computer Lab 2' },
+];
 
 export const TimetableSchedule: React.FC = () => {
   const { currentUser } = useAuth();
@@ -49,6 +75,7 @@ export const TimetableSchedule: React.FC = () => {
     unpublishDivisionTimetable,
     copyDayTimetable,
     copyDivisionTimetable,
+    saveWeeklyScheduleBatch,
     checkFacultyAvailability,
     validateTimetableConflicts,
     dayConfigs,
@@ -158,6 +185,9 @@ export const TimetableSchedule: React.FC = () => {
   const [formRoom, setFormRoom] = useState('Hall 301');
   const [formNotes, setFormNotes] = useState('');
   const [showAllFaculty, setShowAllFaculty] = useState(false);
+  const [selectedPeriodPresetId, setSelectedPeriodPresetId] = useState<string>('p1');
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [showFacultyOverride, setShowFacultyOverride] = useState(false);
 
   // Copy Day / Division Modals
   const [copyDayModalOpen, setCopyDayModalOpen] = useState(false);
@@ -174,6 +204,7 @@ export const TimetableSchedule: React.FC = () => {
   const [savingSession, setSavingSession] = useState(false);
   const [formSubmitError, setFormSubmitError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isGeneratingSkeleton, setIsGeneratingSkeleton] = useState(false);
 
   // Filter department courses with robust normalization
   const availableCourses = useMemo(() => {
@@ -291,52 +322,70 @@ export const TimetableSchedule: React.FC = () => {
     return null;
   }, [formSessionType, formStartTime, formEndTime, activeDaySlots, editingSlotId, formTeacherId, facultyAvailabilityList, formRoom, timetable, selectedDay, currentDivision]);
 
+  // Auto-linked Faculty object and availability
+  const assignedFacultyObj = useMemo(() => {
+    return organizationUsers.find(u => u.uid === formTeacherId) || 
+      departmentFaculty.find(f => f.uid === formTeacherId);
+  }, [organizationUsers, departmentFaculty, formTeacherId]);
+
+  const assignedFacultyAvailability = useMemo(() => {
+    if (!formTeacherId) return null;
+    return checkFacultyAvailability(formTeacherId, selectedDay, formStartTime, formEndTime, editingSlotId || undefined);
+  }, [checkFacultyAvailability, formTeacherId, selectedDay, formStartTime, formEndTime, editingSlotId]);
+
+  // Select Period Preset handler
+  const handleSelectPeriodPreset = (presetId: string) => {
+    setSelectedPeriodPresetId(presetId);
+    if (presetId === 'custom') {
+      setShowAdvancedOptions(true);
+      return;
+    }
+    const preset = COLLEGE_PERIODS.find(p => p.id === presetId);
+    if (!preset) return;
+    setFormStartTime(preset.startTime);
+    setFormEndTime(preset.endTime);
+    setFormSessionType(preset.sessionType);
+    if (preset.defaultRoom) {
+      setFormRoom(preset.defaultRoom);
+    }
+    if (preset.notes) {
+      setFormNotes(preset.notes);
+    } else if (preset.sessionType !== 'break') {
+      setFormNotes('');
+    }
+  };
+
   // Open Create Modal
   const handleOpenCreateModal = (type: SessionType = 'lecture') => {
     setEditingSlotId(null);
     setFormSessionType(type);
     setFormSubmitError(null);
+    setShowAdvancedOptions(false);
+    setShowFacultyOverride(false);
     
-    // Auto calculate smart next start time
-    let nextStart = '09:15';
-    let nextEnd = type === 'practical' ? '11:15' : type === 'break' ? '09:30' : '10:15';
+    // Smartly find which standard period isn't yet taken today
+    const takenRanges = activeDaySlots.map(s => ({ start: s.startTime, end: s.endTime }));
+    const availablePreset = COLLEGE_PERIODS.find(p => {
+      if (type === 'practical' && p.sessionType !== 'practical') return false;
+      if (type === 'break' && p.sessionType !== 'break') return false;
+      if (type === 'lecture' && p.sessionType !== 'lecture') return false;
+      return !takenRanges.some(t => isTimeOverlap(p.startTime, p.endTime, t.start, t.end));
+    }) || COLLEGE_PERIODS.find(p => p.sessionType === type) || COLLEGE_PERIODS[0];
 
-    if (activeDaySlots.length > 0) {
-      const sorted = [...activeDaySlots].sort((a, b) => a.endTime.localeCompare(b.endTime));
-      const lastSlot = sorted[sorted.length - 1];
-      nextStart = lastSlot.endTime;
-
-      const [h, m] = lastSlot.endTime.split(':').map(Number);
-      const addMins = type === 'practical' ? 120 : type === 'break' ? 15 : 60;
-      const totalMins = h * 60 + m + addMins;
-      const endH = String(Math.floor(totalMins / 60)).padStart(2, '0');
-      const endM = String(totalMins % 60).padStart(2, '0');
-      nextEnd = `${endH}:${endM}`;
-    }
-
-    setFormStartTime(nextStart);
-    setFormEndTime(nextEnd);
+    setSelectedPeriodPresetId(availablePreset.id);
+    setFormStartTime(availablePreset.startTime);
+    setFormEndTime(availablePreset.endTime);
+    setFormSessionType(availablePreset.sessionType);
+    setFormRoom(availablePreset.defaultRoom || (type === 'practical' ? 'Computer Lab 1' : 'Hall 301'));
+    setFormNotes(availablePreset.notes || (type === 'break' ? 'Recess / Break' : ''));
 
     // Default course
     const defaultCourse = availableCourses[0];
     setFormCourseId(defaultCourse?.id || '');
 
-    // Default teacher: check who is available for this time slot!
-    const available = departmentFaculty.filter(f => {
-      const chk = checkFacultyAvailability(f.uid, selectedDay, nextStart, nextEnd);
-      return chk.available;
-    });
-
-    if (available.length > 0) {
-      const preferred = available.find(f => f.uid === defaultCourse?.teacherId);
-      setFormTeacherId(preferred ? preferred.uid : available[0].uid);
-    } else {
-      setFormTeacherId(defaultCourse?.teacherId || departmentFaculty[0]?.uid || '');
-    }
-
+    // Default teacher: auto-assign designated course teacher
+    setFormTeacherId(defaultCourse?.teacherId || departmentFaculty[0]?.uid || '');
     setFormAdditionalTeacherIds([]);
-    setFormRoom(type === 'practical' ? 'Computer Lab 1' : 'Hall 301');
-    setFormNotes(type === 'break' ? 'Recess / Break' : '');
     setShowAllFaculty(false);
     setModalOpen(true);
   };
@@ -345,6 +394,8 @@ export const TimetableSchedule: React.FC = () => {
   const handleOpenEditModal = (slot: TimetableSlot) => {
     setEditingSlotId(slot.id);
     setFormSubmitError(null);
+    setShowAdvancedOptions(false);
+    setShowFacultyOverride(false);
     setFormSessionType(slot.sessionType || 'lecture');
     setFormStartTime(slot.startTime);
     setFormEndTime(slot.endTime);
@@ -354,7 +405,94 @@ export const TimetableSchedule: React.FC = () => {
     setFormRoom(slot.room || 'Hall 301');
     setFormNotes(slot.notes || '');
     setShowAllFaculty(false);
+
+    // Match period preset
+    const matchedPreset = COLLEGE_PERIODS.find(
+      p => p.startTime === slot.startTime && p.endTime === slot.endTime
+    );
+    setSelectedPeriodPresetId(matchedPreset ? matchedPreset.id : 'custom');
+
     setModalOpen(true);
+  };
+
+  // 1-Click Generate Standard Daily Skeleton (4 Lectures + 2 Breaks + 1 Lab)
+  const handleGenerateDailySkeleton = async () => {
+    if (!currentDivision) return;
+    setIsGeneratingSkeleton(true);
+    try {
+      const targetDivId = currentDivision.id;
+      const skeletonSlots: Omit<TimetableSlot, 'id'>[] = [];
+
+      const template = [
+        { period: COLLEGE_PERIODS[0], courseIdx: 0 },
+        { period: COLLEGE_PERIODS[1], courseIdx: 1 },
+        { period: COLLEGE_PERIODS[2], courseIdx: -1 },
+        { period: COLLEGE_PERIODS[3], courseIdx: 2 },
+        { period: COLLEGE_PERIODS[4], courseIdx: 3 },
+        { period: COLLEGE_PERIODS[5], courseIdx: -1 },
+        { period: COLLEGE_PERIODS[6], courseIdx: 0 },
+      ];
+
+      for (const item of template) {
+        if (item.period.sessionType === 'break') {
+          skeletonSlots.push({
+            dayOfWeek: selectedDay,
+            sessionType: 'break',
+            startTime: item.period.startTime,
+            endTime: item.period.endTime,
+            notes: item.period.notes || 'Break',
+            organizationId: currentUser?.organizationId || 'org_apex_tech',
+            organizationCode: currentUser?.organizationCode || 'APEX101',
+            department: currentDivision.departmentName || selectedDept,
+            departmentId: currentDivision.departmentId || 'dept_comp',
+            divisionId: targetDivId,
+            divisionName: currentDivision.name || 'Division A',
+            yearOfStudy: currentDivision.yearOfStudy || selectedYearOfStudy,
+            academicYear: selectedAcademicYear,
+            status: 'draft',
+          });
+        } else {
+          const course = availableCourses[item.courseIdx % availableCourses.length] || availableCourses[0];
+          const teacher = organizationUsers.find(u => u.uid === course?.teacherId) || departmentFaculty[0];
+
+          skeletonSlots.push({
+            dayOfWeek: selectedDay,
+            sessionType: item.period.sessionType,
+            startTime: item.period.startTime,
+            endTime: item.period.endTime,
+            room: item.period.defaultRoom || 'Hall 301',
+            notes: item.period.sessionType === 'practical' ? 'Hands-on practical session' : '',
+            organizationId: currentUser?.organizationId || 'org_apex_tech',
+            organizationCode: currentUser?.organizationCode || 'APEX101',
+            department: currentDivision.departmentName || selectedDept,
+            departmentId: currentDivision.departmentId || 'dept_comp',
+            divisionId: targetDivId,
+            divisionName: currentDivision.name || 'Division A',
+            yearOfStudy: currentDivision.yearOfStudy || selectedYearOfStudy,
+            academicYear: selectedAcademicYear,
+            semester: course?.semester || '6th Semester',
+            status: 'draft',
+            courseId: course?.id || `course_${Date.now()}`,
+            courseCode: course?.courseCode || 'SUB',
+            courseName: course?.courseName || 'Lecture Session',
+            teacherId: teacher?.uid || departmentFaculty[0]?.uid || 'teacher_1',
+            teacherName: teacher?.fullName || 'Assigned Faculty',
+            additionalTeacherIds: [],
+            additionalTeacherNames: [],
+          });
+        }
+      }
+
+      await saveWeeklyScheduleBatch(skeletonSlots);
+      setPublishSuccessMsg(`✨ Standard routine skeleton with 4 lectures, 2 breaks & 1 lab generated for ${selectedDay}!`);
+      setTimeout(() => setPublishSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to generate skeleton:', err);
+      setConflictErrors([err?.message || 'Failed to auto-generate skeleton routine.']);
+      setConflictModalOpen(true);
+    } finally {
+      setIsGeneratingSkeleton(false);
+    }
   };
 
   // Save Session (Add / Edit)
@@ -872,23 +1010,26 @@ export const TimetableSchedule: React.FC = () => {
                 </div>
 
                 {canManage && !isDayHoliday && (
-                  <div className="flex items-center justify-center gap-2 pt-2">
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-3">
                     <button
                       type="button"
-                      onClick={() => handleOpenCreateModal('lecture')}
-                      className="px-3.5 py-2 bg-navy-900 text-warm-50 text-xs font-bold rounded-lg hover:bg-navy-800 transition-colors flex items-center gap-1.5 shadow-subtle"
+                      disabled={isGeneratingSkeleton}
+                      onClick={handleGenerateDailySkeleton}
+                      className="px-4 py-2.5 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2 shadow-subtle cursor-pointer disabled:opacity-50 active:scale-95"
                     >
-                      <Plus className="h-3.5 w-3.5 text-primary" />
-                      <span>Add Lecture Slot</span>
+                      <Zap className="h-4 w-4" />
+                      <span>{isGeneratingSkeleton ? 'Building Routine...' : '✨ Auto-Fill Daily Routine (4 Lecs + 2 Breaks + 1 Lab)'}</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenCreateModal('practical')}
-                      className="px-3.5 py-2 bg-purple-700 text-white text-xs font-bold rounded-lg hover:bg-purple-800 transition-colors flex items-center gap-1.5 shadow-subtle"
-                    >
-                      <FlaskConical className="h-3.5 w-3.5" />
-                      <span>Add Practical Lab</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCreateModal('lecture')}
+                        className="px-3.5 py-2.5 bg-navy-900 text-warm-50 text-xs font-bold rounded-lg hover:bg-navy-800 transition-colors flex items-center gap-1.5 shadow-subtle active:scale-95"
+                      >
+                        <Plus className="h-3.5 w-3.5 text-primary" />
+                        <span>Add Single Slot</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1208,83 +1349,76 @@ export const TimetableSchedule: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveSession} className="space-y-4">
-              {/* Session Type Tabs */}
+              {/* STEP 1: PERIOD & TIMING PRESET CHIPS */}
               <div>
-                <label className="block text-xs font-semibold text-navy-700 mb-1">Session Type</label>
-                <div className="grid grid-cols-3 gap-2 p-1 bg-warm-100 rounded-lg border border-warm-300 text-xs font-semibold">
+                <label className="block text-xs font-semibold text-navy-700 mb-1.5 flex items-center justify-between">
+                  <span>1. Select College Period (1-Click Auto Time)</span>
+                  <span className="font-mono text-[11px] text-primary font-bold">{formStartTime} – {formEndTime}</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {COLLEGE_PERIODS.map(p => {
+                    const isSelected = selectedPeriodPresetId === p.id;
+                    const isBreak = p.sessionType === 'break';
+                    const isLab = p.sessionType === 'practical';
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectPeriodPreset(p.id)}
+                        className={`p-2 rounded-lg border text-left transition-all ${
+                          isSelected
+                            ? isBreak 
+                              ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold ring-2 ring-amber-300'
+                              : isLab
+                                ? 'bg-purple-100 border-purple-400 text-purple-950 font-bold ring-2 ring-purple-300'
+                                : 'bg-navy-900 border-navy-900 text-white font-bold ring-2 ring-primary/40'
+                            : isBreak
+                              ? 'bg-amber-50/60 border-amber-200 text-amber-900 hover:bg-amber-100/60'
+                              : isLab
+                                ? 'bg-purple-50/50 border-purple-200 text-purple-900 hover:bg-purple-100/50'
+                                : 'bg-surface border-warm-300 text-navy-800 hover:border-warm-400 hover:bg-warm-50'
+                        }`}
+                      >
+                        <div className="text-[11px] leading-tight truncate">{p.name}</div>
+                        <div className={`font-mono text-[10px] ${isSelected && !isBreak && !isLab ? 'text-teal-300' : 'text-navy-500'}`}>
+                          {p.shortLabel}
+                        </div>
+                      </button>
+                    );
+                  })}
                   <button
                     type="button"
-                    onClick={() => setFormSessionType('lecture')}
-                    className={`py-1.5 rounded-md transition-all ${
-                      formSessionType === 'lecture' ? 'bg-surface text-navy-900 shadow-subtle font-bold' : 'text-navy-600 hover:text-navy-900'
+                    onClick={() => handleSelectPeriodPreset('custom')}
+                    className={`p-2 rounded-lg border text-left transition-all ${
+                      selectedPeriodPresetId === 'custom'
+                        ? 'bg-navy-900 border-navy-900 text-white font-bold ring-2 ring-primary/40'
+                        : 'bg-surface border-warm-300 text-navy-700 hover:border-warm-400 hover:bg-warm-50'
                     }`}
                   >
-                    Lecture
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormSessionType('practical')}
-                    className={`py-1.5 rounded-md transition-all ${
-                      formSessionType === 'practical' ? 'bg-surface text-purple-900 shadow-subtle font-bold' : 'text-navy-600 hover:text-navy-900'
-                    }`}
-                  >
-                    Practical Lab
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormSessionType('break')}
-                    className={`py-1.5 rounded-md transition-all ${
-                      formSessionType === 'break' ? 'bg-surface text-amber-900 shadow-subtle font-bold' : 'text-navy-600 hover:text-navy-900'
-                    }`}
-                  >
-                    Break / Lunch
+                    <div className="text-[11px] leading-tight">Custom ⏱</div>
+                    <div className="font-mono text-[10px] text-navy-500">Manual Time</div>
                   </button>
                 </div>
               </div>
 
-              {/* Time Slots */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-navy-700 mb-1">Start Time</label>
-                  <input
-                    type="time"
-                    required
-                    value={formStartTime}
-                    onChange={e => setFormStartTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs font-mono font-bold bg-white focus:outline-none focus:border-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-navy-700 mb-1">End Time</label>
-                  <input
-                    type="time"
-                    required
-                    value={formEndTime}
-                    onChange={e => setFormEndTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs font-mono font-bold bg-white focus:outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-
-              {/* IF BREAK: Notes only */}
+              {/* STEP 2: COURSE / SUBJECT & FACULTY AUTO-LINK */}
               {formSessionType === 'break' ? (
                 <div>
-                  <label className="block text-xs font-semibold text-navy-700 mb-1">Break Description</label>
+                  <label className="block text-xs font-semibold text-navy-700 mb-1">Break Name / Type</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Lunch Break, Recess, Tea Break"
+                    placeholder="e.g. Lunch Break, Morning Recess"
                     value={formNotes}
                     onChange={e => setFormNotes(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary font-medium"
                   />
                 </div>
               ) : (
                 <>
-                  {/* Subject Picker */}
                   <div>
                     <label className="block text-xs font-semibold text-navy-700 mb-1">
-                      {formSessionType === 'practical' ? 'Practical Lab Subject' : 'Course / Subject'}
+                      {formSessionType === 'practical' ? '2. Select Practical Lab Subject' : '2. Select Course / Subject'}
                     </label>
                     <select
                       value={formCourseId}
@@ -1292,108 +1426,192 @@ export const TimetableSchedule: React.FC = () => {
                         const cid = e.target.value;
                         setFormCourseId(cid);
                         const c = courses.find(crs => crs.id === cid);
-                        if (c) setFormTeacherId(c.teacherId);
+                        if (c && c.teacherId) {
+                          setFormTeacherId(c.teacherId);
+                        }
                       }}
-                      className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary"
+                      className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary font-medium"
                     >
                       {availableCourses.map(course => (
                         <option key={course.id} value={course.id}>
-                          {course.courseCode} — {course.courseName} (Prof. {course.teacherName})
+                          {course.courseCode} — {course.courseName}
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* SMART FACULTY AVAILABILITY DETECTION */}
-                  <div className="space-y-1.5 p-3 rounded-lg bg-warm-50 border border-warm-300">
+                  {/* Auto-Assigned Faculty Card */}
+                  <div className="p-2.5 rounded-lg bg-warm-50 border border-warm-300 space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-navy-900 flex items-center gap-1.5">
-                        <User className="h-3.5 w-3.5 text-primary" />
-                        <span>Lead Instructor (Smart Availability Checked)</span>
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-full bg-teal-100 text-primary flex items-center justify-center shrink-0">
+                          <UserCheck className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-navy-900 flex items-center gap-1.5">
+                            <span>{assignedFacultyObj?.fullName || 'Assigned Faculty'}</span>
+                            {assignedFacultyAvailability?.available ? (
+                              <span className="text-[10px] bg-teal-50 border border-teal-200 text-teal-800 font-mono font-bold px-1.5 py-0.2 rounded">
+                                ✓ Available
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-amber-50 border border-amber-300 text-amber-800 font-mono font-bold px-1.5 py-0.2 rounded" title={assignedFacultyAvailability?.conflictReason}>
+                                ⚠ Busy elsewhere
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-navy-500">
+                            {assignedFacultyObj?.department || 'Faculty'} &bull; Auto-assigned from course curriculum
+                          </div>
+                        </div>
+                      </div>
+
                       <button
                         type="button"
-                        onClick={() => setShowAllFaculty(!showAllFaculty)}
-                        className="text-[10px] font-semibold text-primary hover:underline"
+                        onClick={() => setShowFacultyOverride(!showFacultyOverride)}
+                        className="text-xs text-primary font-semibold hover:underline flex items-center gap-1 shrink-0"
                       >
-                        {showAllFaculty ? 'Filter to Available Only' : 'Show All Faculty & Conflicts'}
+                        <span>{showFacultyOverride ? 'Keep Default' : 'Change Faculty'}</span>
+                        {showFacultyOverride ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       </button>
                     </div>
 
-                    {availableFacultyOnly.length === 0 && (
-                      <div className="p-3 bg-amber-50 border border-amber-300 rounded-md text-xs text-amber-900 space-y-1">
-                        <p className="font-bold flex items-center gap-1">
-                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-700" />
-                          <span>All professors are currently scheduled elsewhere at this time.</span>
-                        </p>
-                        <p className="text-[11px] leading-tight">
-                          You can still assign a faculty member or adjust the session time slot.
-                        </p>
+                    {/* Collapsible Faculty Override Dropdown */}
+                    {showFacultyOverride && (
+                      <div className="pt-2 border-t border-warm-200 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-navy-700">Substitute / Alternate Professor:</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowAllFaculty(!showAllFaculty)}
+                            className="text-[10px] font-semibold text-primary hover:underline"
+                          >
+                            {showAllFaculty ? 'Show Available Only' : 'Show All'}
+                          </button>
+                        </div>
+                        <select
+                          value={formTeacherId}
+                          onChange={e => setFormTeacherId(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary font-medium"
+                        >
+                          {(showAllFaculty || availableFacultyOnly.length === 0 ? facultyAvailabilityList : availableFacultyOnly).map(({ faculty, isAvailable, reason }) => (
+                            <option 
+                              key={faculty.uid} 
+                              value={faculty.uid} 
+                              className={!isAvailable ? 'text-amber-800 bg-amber-50 font-normal' : 'text-navy-900 font-semibold'}
+                            >
+                              {isAvailable 
+                                ? `✓ ${faculty.fullName} (${faculty.facultyId || faculty.department}) - Available`
+                                : `⚠ ${faculty.fullName} - ${reason}`}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     )}
-
-                    <select
-                      value={formTeacherId}
-                      onChange={e => setFormTeacherId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary font-medium"
-                    >
-                      {(showAllFaculty || availableFacultyOnly.length === 0 ? facultyAvailabilityList : availableFacultyOnly).map(({ faculty, isAvailable, reason }) => (
-                        <option 
-                          key={faculty.uid} 
-                          value={faculty.uid} 
-                          className={!isAvailable ? 'text-amber-800 bg-amber-50 font-normal' : 'text-navy-900 font-semibold'}
-                        >
-                          {isAvailable 
-                            ? `✓ ${faculty.fullName} (${faculty.facultyId || faculty.department}) - Available`
-                            : `⚠ ${faculty.fullName} - ${reason}`}
-                        </option>
-                      ))}
-                    </select>
-
-                    <p className="text-[10px] text-navy-500">
-                      Cross-checks all divisions and years in the institute on {selectedDay} ({formStartTime}–{formEndTime}).
-                    </p>
                   </div>
 
-                  {/* For Practical Lab: Additional Co-Instructors */}
-                  {formSessionType === 'practical' && (
-                    <div className="space-y-1">
-                      <label className="block text-xs font-semibold text-navy-700 mb-1">
-                        Additional Lab Co-Faculty (Optional)
-                      </label>
-                      <select
-                        multiple
-                        value={formAdditionalTeacherIds}
-                        onChange={e => {
-                          const selected = Array.from(e.target.selectedOptions, o => o.value);
-                          setFormAdditionalTeacherIds(selected);
-                        }}
-                        className="w-full px-3 py-1.5 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary h-20"
-                      >
-                        {departmentFaculty.map(f => (
-                          <option key={f.uid} value={f.uid}>
-                            {f.fullName} ({f.department})
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-navy-400">Hold Ctrl / Cmd to select multiple co-instructors.</p>
-                    </div>
-                  )}
-
-                  {/* Room / Lab Location */}
+                  {/* STEP 3: ROOM / LAB HALL */}
                   <div>
-                    <label className="block text-xs font-semibold text-navy-700 mb-1">Room / Lab Hall</label>
+                    <label className="block text-xs font-semibold text-navy-700 mb-1">
+                      3. Room / Laboratory Hall
+                    </label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Hall 301, Lab 4, Seminar Room B"
+                      placeholder="e.g. Hall 301, Computer Lab 1, Seminar Room B"
                       value={formRoom}
                       onChange={e => setFormRoom(e.target.value)}
-                      className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs font-mono bg-white focus:outline-none focus:border-primary"
+                      className="w-full px-3 py-2 rounded-md border border-warm-300 text-xs font-mono bg-white focus:outline-none focus:border-primary font-medium"
                     />
                   </div>
                 </>
               )}
+
+              {/* COLLAPSIBLE ADVANCED OPTIONS ACCORDION */}
+              <div className="border border-warm-200 rounded-lg p-2.5 bg-warm-50/50">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                  className="w-full flex items-center justify-between text-xs font-semibold text-navy-700 hover:text-navy-900"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>⚙ Advanced Options</span>
+                    <span className="text-[10px] text-navy-400 font-normal">(Custom exact times, co-faculty, notes)</span>
+                  </span>
+                  {showAdvancedOptions ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+
+                {showAdvancedOptions && (
+                  <div className="space-y-3 pt-3 mt-2 border-t border-warm-200">
+                    {/* Exact Start & End Time Inputs */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-navy-700 mb-1">Exact Start Time</label>
+                        <input
+                          type="time"
+                          required
+                          value={formStartTime}
+                          onChange={e => {
+                            setFormStartTime(e.target.value);
+                            setSelectedPeriodPresetId('custom');
+                          }}
+                          className="w-full px-3 py-1.5 rounded-md border border-warm-300 text-xs font-mono font-bold bg-white focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-navy-700 mb-1">Exact End Time</label>
+                        <input
+                          type="time"
+                          required
+                          value={formEndTime}
+                          onChange={e => {
+                            setFormEndTime(e.target.value);
+                            setSelectedPeriodPresetId('custom');
+                          }}
+                          className="w-full px-3 py-1.5 rounded-md border border-warm-300 text-xs font-mono font-bold bg-white focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+
+                    {/* For Practical Lab: Additional Co-Instructors */}
+                    {formSessionType === 'practical' && (
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-semibold text-navy-700 mb-1">
+                          Additional Lab Co-Faculty (Optional)
+                        </label>
+                        <select
+                          multiple
+                          value={formAdditionalTeacherIds}
+                          onChange={e => {
+                            const selected = Array.from(e.target.selectedOptions, o => o.value);
+                            setFormAdditionalTeacherIds(selected);
+                          }}
+                          className="w-full px-3 py-1.5 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary h-20"
+                        >
+                          {departmentFaculty.map(f => (
+                            <option key={f.uid} value={f.uid}>
+                              {f.fullName} ({f.department})
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-navy-400">Hold Ctrl / Cmd to select multiple co-instructors.</p>
+                      </div>
+                    )}
+
+                    {/* Notes input */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-navy-700 mb-1">Session Notes / Instructions</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Bring Practical Records / Unit 3 Review"
+                        value={formNotes}
+                        onChange={e => setFormNotes(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-md border border-warm-300 text-xs bg-white focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* LIVE CONFLICT ALERT WARNING */}
               {liveModalConflict && (
