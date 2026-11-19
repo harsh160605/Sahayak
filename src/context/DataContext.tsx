@@ -2147,9 +2147,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Division CRUD
   const addDivision = async (data: Omit<Division, 'id'>) => {
     const divId = `div_${data.departmentCode.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const yrShort = data.yearOfStudy === 'First Year' ? 'FE' : data.yearOfStudy === 'Second Year' ? 'SE' : data.yearOfStudy === 'Third Year' ? 'TE' : 'BE';
+    const divLetter = data.name.replace(/Division\s*/i, '').trim() || 'A';
+    const divCode = data.divisionCode || `${(data.departmentCode || 'DEPT').toUpperCase()}-${yrShort}-${divLetter.toUpperCase()}`;
+
     const newDiv: Division = {
       ...data,
       id: divId,
+      divisionCode: divCode,
       organizationId: data.organizationId || userOrgId,
       organizationCode: data.organizationCode || userOrgCode || 'APEX101',
       createdAt: new Date().toISOString()
@@ -2405,8 +2410,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     for (const div of onboardingData.divisions) {
       const dept = createdDepts.find(d => d.code === div.departmentCode) || createdDepts[0];
       const divId = `div_${div.departmentCode.toLowerCase()}_${div.yearOfStudy.replace(/\s+/g, '_').toLowerCase()}_${div.name.replace(/\s+/g, '_').toLowerCase()}`;
+      const yrShort = div.yearOfStudy === 'First Year' ? 'FE' : div.yearOfStudy === 'Second Year' ? 'SE' : div.yearOfStudy === 'Third Year' ? 'TE' : 'BE';
+      const divLetter = div.name.replace(/Division\s*/i, '').trim() || 'A';
+      const divCode = `${div.departmentCode.toUpperCase()}-${yrShort}-${divLetter.toUpperCase()}`;
       const newDiv: Division = {
         id: divId,
+        divisionCode: divCode,
         organizationId: userOrgId,
         organizationCode: userOrgCode || updatedOrg.code || 'APEX101',
         departmentId: dept ? dept.id : 'dept_general',

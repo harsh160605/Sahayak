@@ -224,6 +224,12 @@ export const StudentDashboard: React.FC = () => {
             <span className="text-navy-700">Roll: <strong className="font-mono text-navy-900">{currentUser?.studentId || currentUser?.rollNo || '22CS042'}</strong></span>
             <span className="hidden sm:inline text-warm-400">&bull;</span>
             <span className="hidden sm:inline text-navy-600">{currentUser?.yearOfStudy || 'Third Year'}</span>
+            {myDivision?.classTeacherName && (
+              <>
+                <span className="hidden sm:inline text-warm-400">&bull;</span>
+                <span className="hidden sm:inline text-teal-800 font-medium">Mentor: {myDivision.classTeacherName}</span>
+              </>
+            )}
           </div>
           <h1 className="text-xl sm:text-3xl font-bold tracking-tight text-navy-900">
             {timeGreeting}, {firstName}
@@ -332,7 +338,7 @@ export const StudentDashboard: React.FC = () => {
             {myCourses.length} active registered courses
           </p>
           <div className="text-[11px] text-navy-500 font-mono">
-            Division: {currentUser?.divisionName || 'Div A'}
+            Division: {currentUser?.divisionName || 'Div A'} {myDivision?.classTeacherName ? `• Guardian: ${myDivision.classTeacherName}` : ''}
           </div>
         </div>
       </div>

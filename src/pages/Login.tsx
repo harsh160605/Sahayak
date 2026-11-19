@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { 
   QrCode, 
   Shield, 
@@ -25,6 +26,7 @@ export const Login: React.FC = () => {
     createOrganizationAndRegisterAdmin, 
     isLiveFirebase 
   } = useAuth();
+  const { divisions, departments } = useData();
   
   const navigate = useNavigate();
 
@@ -43,6 +45,10 @@ export const Login: React.FC = () => {
   const [facultyId, setFacultyId] = useState('');
   const [semester, setSemester] = useState('6th Semester');
   
+  // Guided Join Code (Division Code for students, Dept Code for faculty)
+  const [classJoinCode, setClassJoinCode] = useState('');
+  const [showManualClassPicker, setShowManualClassPicker] = useState(false);
+
   // Organization Join / Create Fields
   const [orgCode, setOrgCode] = useState('');
   const [newOrgName, setNewOrgName] = useState('');
@@ -52,13 +58,34 @@ export const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Real-time resolution of Division Code for students
+  const matchedDivision = useMemo(() => {
+    if (role !== 'student' || !classJoinCode.trim()) return null;
+    const clean = classJoinCode.trim().toUpperCase();
+    return divisions.find(d => {
+      const yrShort = d.yearOfStudy === 'First Year' ? 'FE' : d.yearOfStudy === 'Second Year' ? 'SE' : d.yearOfStudy === 'Third Year' ? 'TE' : 'BE';
+      const divLetter = d.name.replace(/Division\s*/i, '').trim().toUpperCase() || 'A';
+      const autoCode = `${(d.departmentCode || '').toUpperCase()}-${yrShort}-${divLetter}`;
+      return d.divisionCode?.toUpperCase() === clean || autoCode === clean || d.id.toUpperCase() === clean;
+    });
+  }, [role, classJoinCode, divisions]);
+
+  // Real-time resolution of Department Code for faculty
+  const matchedDepartment = useMemo(() => {
+    if (role !== 'teacher' || !classJoinCode.trim()) return null;
+    const clean = classJoinCode.trim().toUpperCase();
+    return departments.find(d => {
+      return d.code?.toUpperCase() === clean || `${orgCode}-${d.code}`.toUpperCase() === clean || (d.name && d.name.toUpperCase().includes(clean));
+    });
+  }, [role, classJoinCode, departments, orgCode]);
+
   const fillSampleInstitute = () => {
     setNewOrgName('Trinity College of Engineering & Research');
     setNewOrgCode('TCOER25');
     setNewOrgCity('Pune');
     setFullName('Prof. Jareena Shaikh');
     setFacultyId('FAC-CS-01');
-    setDepartment('Computer Science & Engineering');
+    setDepartment('Computer Engineering');
     setEmail('jareena.shaikh@tcoer.edu');
     setPassword('Password@123');
     setErrorMsg(null);
@@ -67,10 +94,12 @@ export const Login: React.FC = () => {
   const fillSampleJoinStudent = () => {
     setOrgCode('APEX101');
     setRole('student');
+    setClassJoinCode('COMP-TE-A');
     setFullName('Rohan Verma');
     setStudentId('22CS088');
+    setRollNo('88');
     setSemester('6th Semester');
-    setDepartment('Computer Science & Engineering');
+    setDepartment('Computer Engineering');
     setEmail('rohan.cs22@college.edu');
     setPassword('Password@123');
     setErrorMsg(null);
@@ -95,18 +124,26 @@ export const Login: React.FC = () => {
       }
     } else if (mode === 'join_org') {
       // Register Professor or Student joining an existing institute
+      const targetDept = matchedDivision?.departmentName || (matchedDepartment ? matchedDepartment.name : department.trim());
+      const targetYear = matchedDivision?.yearOfStudy || yearOfStudy;
+      const targetDiv = matchedDivision?.name || divisionName;
+      const targetDivId = matchedDivision?.id;
+      const targetDivCode = matchedDivision?.divisionCode || classJoinCode.trim().toUpperCase();
+
       const profileData = {
         fullName: fullName.trim(),
         email: email.trim(),
         role,
-        department: department.trim(),
+        department: targetDept,
         ...(role === 'student' 
           ? { 
               studentId: (rollNo || studentId).trim().toUpperCase(), 
               rollNo: (rollNo || studentId).trim(),
               semester,
-              yearOfStudy,
-              divisionName
+              yearOfStudy: targetYear,
+              divisionName: targetDiv,
+              divisionId: targetDivId,
+              divisionCode: targetDivCode
             } 
           : { 
               facultyId: facultyId.trim().toUpperCase() 
@@ -384,9 +421,10 @@ export const Login: React.FC = () => {
                   <div>
                     <label className="block text-xs font-semibold text-navy-700 mb-1">Department</label>
                     <select
-                      value={department}
+                      value={matchedDivision?.departmentName || (matchedDepartment ? matchedDepartment.name : department)}
                       onChange={e => setDepartment(e.target.value)}
-                      className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs bg-surface text-navy-900"
+                      disabled={!!matchedDivision || !!matchedDepartment}
+                      className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs bg-surface text-navy-900 disabled:bg-warm-100"
                     >
                       <option value="Computer Engineering">Computer Engineering</option>
                       <option value="Information Technology">Information Technology</option>
@@ -397,8 +435,71 @@ export const Login: React.FC = () => {
                   </div>
                 </div>
 
+                {/* GUIDED CLASS / DIVISION JOIN FOR STUDENTS */}
                 {role === 'student' && mode === 'join_org' && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-navy-800 mb-1 flex items-center justify-between">
+                        <span>Class / Division Join Code</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowManualClassPicker(!showManualClassPicker)}
+                          className="text-[10px] text-primary hover:underline font-normal"
+                        >
+                          {showManualClassPicker ? 'Hide manual picker' : 'Or select class manually'}
+                        </button>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. COMP-TE-A (provided by Class Teacher)"
+                        value={classJoinCode}
+                        onChange={e => setClassJoinCode(e.target.value.toUpperCase())}
+                        className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs font-mono uppercase font-bold text-navy-900 focus:outline-none focus:border-primary shadow-subtle"
+                      />
+                    </div>
+
+                    {matchedDivision && (
+                      <div className="p-3 rounded-lg bg-teal-50 border border-teal-200 text-xs text-teal-950 space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-teal-800">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>Class Verified: {matchedDivision.departmentName} &bull; {matchedDivision.name}</span>
+                        </div>
+                        <div className="text-[11px] text-teal-900">
+                          Year: <strong>{matchedDivision.yearOfStudy}</strong> &bull; Class Teacher: <strong>{matchedDivision.classTeacherName || 'Assigned by HOD'}</strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* GUIDED DEPARTMENT JOIN FOR FACULTY */}
+                {role === 'teacher' && mode === 'join_org' && (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-navy-800 mb-1">
+                        Department Join Code (from HOD)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. TCOER-COMP or COMP"
+                        value={classJoinCode}
+                        onChange={e => setClassJoinCode(e.target.value.toUpperCase())}
+                        className="w-full px-3 py-2 border border-warm-300 rounded-md text-xs font-mono uppercase font-bold text-navy-900 focus:outline-none focus:border-primary shadow-subtle"
+                      />
+                    </div>
+
+                    {matchedDepartment && (
+                      <div className="p-2.5 rounded-lg bg-teal-50 border border-teal-200 text-xs text-teal-950 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>Department Verified: <strong>{matchedDepartment.name}</strong> (HOD: {matchedDepartment.hodName || 'Assigned'})</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* MANUAL YEAR & DIVISION FALLBACK FOR STUDENTS */}
+                {role === 'student' && mode === 'join_org' && (!matchedDivision || showManualClassPicker) && (
+                  <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-warm-50 border border-warm-200">
                     <div>
                       <label className="block text-xs font-semibold text-navy-700 mb-1">Academic Year</label>
                       <select

@@ -31,6 +31,7 @@ export interface Division {
   yearOfStudy: YearOfStudy; // e.g. "Third Year"
   name: string; // e.g. "Division A"
   academicYear: string; // e.g. "2026–27"
+  divisionCode?: string; // e.g. "COMP-TE-A"
   classTeacherId?: string;
   classTeacherName?: string;
   classTeacherEmail?: string;

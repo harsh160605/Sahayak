@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   BookOpen, 
@@ -26,7 +26,8 @@ import {
   CalendarClock,
   CheckCircle,
   Smartphone,
-  ShieldCheck
+  ShieldCheck,
+  Copy
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -117,6 +118,15 @@ export const TeacherDashboard: React.FC = () => {
   // Historical sessions & pending requests
   const mySessions = sessions.filter(s => s.teacherId === currentUser?.uid);
   const pendingRequests = requests.filter(r => (r.teacherId === currentUser?.uid || myCourseIds.includes(r.courseId)) && r.status === 'pending');
+
+  // Check if current faculty is appointed as Class Teacher for any division
+  const myClassTeacherDivisions = useMemo(() => {
+    return divisions.filter(d => 
+      d.classTeacherId === currentUser?.uid || 
+      (currentUser?.fullName && d.classTeacherName === currentUser.fullName)
+    );
+  }, [divisions, currentUser]);
+  const [copiedClassCode, setCopiedClassCode] = useState<string | null>(null);
 
   // Device Change Requests State (Department Teacher Approval)
   const [showDeviceModal, setShowDeviceModal] = useState(false);
@@ -454,6 +464,60 @@ export const TeacherDashboard: React.FC = () => {
         <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-xs text-emerald-900 flex items-center gap-2 animate-fade-in">
           <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
           <span>{deviceActionNotice}</span>
+        </div>
+      )}
+
+      {/* Official Class Teacher (Mentor) Banner */}
+      {myClassTeacherDivisions.length > 0 && (
+        <div className="p-4 rounded-xl bg-teal-50 border border-teal-200 shadow-subtle space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-lg bg-primary text-white flex items-center justify-center shrink-0 shadow-subtle">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-teal-800">
+                    OFFICIAL CLASS TEACHER (MENTOR)
+                  </span>
+                  {myClassTeacherDivisions.map(d => (
+                    <span key={d.id} className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-navy-900 text-white">
+                      {d.departmentCode || d.departmentName} &bull; {d.yearOfStudy} ({d.name})
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-navy-600 mt-0.5">
+                  You are designated as the Class Teacher. Share your class join code with students to build your division roster.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap self-start sm:self-center shrink-0">
+              {myClassTeacherDivisions.map(d => {
+                const yrShort = d.yearOfStudy === 'First Year' ? 'FE' : d.yearOfStudy === 'Second Year' ? 'SE' : d.yearOfStudy === 'Third Year' ? 'TE' : 'BE';
+                const divLetter = d.name.replace(/Division\s*/i, '').trim() || 'A';
+                const code = d.divisionCode || `${(d.departmentCode || 'COMP').toUpperCase()}-${yrShort}-${divLetter.toUpperCase()}`;
+                const isCopied = copiedClassCode === code;
+
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(code);
+                      setCopiedClassCode(code);
+                      setTimeout(() => setCopiedClassCode(null), 2500);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-surface border border-warm-300 text-navy-800 text-xs font-mono font-bold hover:bg-warm-100 transition-colors flex items-center gap-1.5 shadow-subtle cursor-pointer active:scale-95"
+                    title={`Copy Class Join Code for Students: ${code}`}
+                  >
+                    <Copy className="h-3.5 w-3.5 text-primary" />
+                    <span>{isCopied ? 'Code Copied!' : `Class Code: ${code}`}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

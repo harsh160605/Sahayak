@@ -51,6 +51,7 @@ export const AdminDashboard: React.FC = () => {
     assignFacultyDepartment, 
     removeFaculty, 
     deleteDivision,
+    updateDivision,
     allocateSubjectToDivision,
     updateSubjectAllocation,
     removeSubjectAllocation
@@ -1442,38 +1443,100 @@ export const AdminDashboard: React.FC = () => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                               {yearDivisions.map(div => {
                                 const divAllocations = subjectAllocations.filter(sa => sa.divisionId === div.id);
+                                const yrShort = div.yearOfStudy === 'First Year' ? 'FE' : div.yearOfStudy === 'Second Year' ? 'SE' : div.yearOfStudy === 'Third Year' ? 'TE' : 'BE';
+                                const divLetter = div.name.replace(/Division\s*/i, '').trim() || 'A';
+                                const divisionCode = div.divisionCode || `${(div.departmentCode || 'DEPT').toUpperCase()}-${yrShort}-${divLetter.toUpperCase()}`;
+
+                                // Filter enrolled faculty belonging to this department
+                                const sDept = (deptName || '').toLowerCase().replace(/engineering|science|and|&/g, '').trim();
+                                const deptFacultyList = organizationUsers.filter(u => {
+                                  if (u.role !== 'teacher' && u.role !== 'admin') return false;
+                                  const uDept = (u.department || '').toLowerCase().replace(/engineering|science|and|&/g, '').trim();
+                                  return uDept.includes(sDept) || sDept.includes(uDept) || (div.departmentId && u.departmentId === div.departmentId);
+                                });
 
                                 return (
                                   <div
                                     key={div.id}
-                                    className="p-3.5 rounded-lg border border-warm-200 bg-warm-50/50 hover:bg-white transition-all space-y-2 relative group"
+                                    className="p-3.5 rounded-xl border border-warm-300 bg-surface shadow-subtle hover:border-warm-400 transition-all space-y-3 relative group"
                                   >
-                                    <div className="flex items-start justify-between">
-                                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
-                                        {div.name}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => deleteDivision(div.id)}
-                                        className="text-navy-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
-                                        title="Delete Division"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
+                                    <div className="flex items-start justify-between gap-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-navy-900 text-white">
+                                          {div.name}
+                                        </span>
+                                        <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-teal-50 border border-teal-200 text-teal-800">
+                                          {divisionCode}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            navigator.clipboard.writeText(divisionCode);
+                                            setCopiedCode(true);
+                                            setTimeout(() => setCopiedCode(false), 2000);
+                                          }}
+                                          className="p-1 text-navy-500 hover:text-primary rounded hover:bg-warm-100 transition-colors"
+                                          title={`Copy Class Join Code: ${divisionCode}`}
+                                        >
+                                          <Copy className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => deleteDivision(div.id)}
+                                          className="text-navy-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50"
+                                          title="Delete Division"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
                                     </div>
 
-                                    <div className="text-xs text-navy-600 space-y-0.5 font-mono">
-                                      <p>Room: <strong className="text-navy-900">{div.roomNumber || 'Room 101'}</strong></p>
-                                      <p>Teacher: <span className="text-navy-900">{div.classTeacherName || 'Unassigned'}</span></p>
-                                      <p>Enrolled: <strong className="text-primary">{div.enrolledCount || 0}</strong>/{div.capacity || 72}</p>
+                                    {/* Class Teacher (Guardian) Selector */}
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] font-semibold text-navy-500 block uppercase tracking-wider font-mono">
+                                        Class Teacher (Guardian)
+                                      </label>
+                                      <select
+                                        value={div.classTeacherId || ''}
+                                        onChange={async e => {
+                                          const fid = e.target.value;
+                                          const f = organizationUsers.find(u => u.uid === fid);
+                                          await updateDivision(div.id, {
+                                            classTeacherId: fid || undefined,
+                                            classTeacherName: f ? f.fullName : undefined,
+                                            classTeacherEmail: f ? f.email : undefined
+                                          });
+                                        }}
+                                        className="w-full px-2 py-1.5 border border-warm-300 rounded-md text-[11px] font-medium bg-warm-50 text-navy-900 focus:outline-none focus:border-primary"
+                                      >
+                                        <option value="">⚠️ Assign Class Teacher</option>
+                                        {deptFacultyList.map(f => (
+                                          <option key={f.uid} value={f.uid}>
+                                            👨‍🏫 {f.fullName} ({f.facultyId || 'Faculty'})
+                                          </option>
+                                        ))}
+                                      </select>
+                                      {deptFacultyList.length === 0 && (
+                                        <p className="text-[10px] text-amber-700 italic">
+                                          No faculty enrolled in {deptName} yet. Share Dept Key with teachers.
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div className="text-[11px] text-navy-600 flex items-center justify-between font-mono pt-1 border-t border-warm-200">
+                                      <span>Room: <strong className="text-navy-900">{div.roomNumber || 'Hall 301'}</strong></span>
+                                      <span>Students: <strong className="text-primary">{div.enrolledCount || div.studentCount || 0}</strong></span>
                                     </div>
 
                                     {divAllocations.length > 0 && (
-                                      <div className="pt-2 border-t border-warm-200 flex flex-wrap gap-1">
+                                      <div className="pt-1.5 flex flex-wrap gap-1">
                                         {divAllocations.map(sa => (
                                           <span
                                             key={sa.id}
                                             className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-warm-300 text-navy-800 font-mono"
+                                            title={`${sa.courseName} (Prof. ${sa.teacherName})`}
                                           >
                                             {sa.courseCode}
                                           </span>
