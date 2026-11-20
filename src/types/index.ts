@@ -1,4 +1,4 @@
-export type UserRole = 'teacher' | 'student' | 'admin';
+export type UserRole = 'teacher' | 'student' | 'admin' | 'dept_admin';
 
 export type YearOfStudy = 'First Year' | 'Second Year' | 'Third Year' | 'Fourth Year';
 
@@ -126,6 +126,7 @@ export interface DeviceChangeRequest {
   departmentId?: string;
   divisionId?: string;
   divisionName?: string;
+  batch?: string;
   yearOfStudy?: YearOfStudy;
   oldDeviceId?: string;
   oldDeviceName?: string;
@@ -149,6 +150,7 @@ export interface Course {
   courseName: string;
   department: string;
   departmentId?: string;
+  departmentCode?: string;
   yearOfStudy?: YearOfStudy;
   divisionId?: string;
   divisionName?: string;
@@ -310,6 +312,7 @@ export interface TimetableSlot {
   departmentId?: string;
   divisionId?: string;
   divisionName?: string;
+  batch?: string;
   yearOfStudy?: YearOfStudy;
   academicYear?: string;
   status?: 'draft' | 'published';

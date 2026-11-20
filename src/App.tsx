@@ -20,6 +20,7 @@ import { Profile } from './pages/Profile';
 import { TimetableSchedule } from './pages/TimetableSchedule';
 import { InstituteDirectory } from './pages/InstituteDirectory';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { DepartmentAdminDashboard } from './pages/admin/DepartmentAdminDashboard';
 import { InstituteOnboardingWizard } from './pages/onboarding/InstituteOnboardingWizard';
 import { UserRole } from './types';
 
@@ -35,13 +36,16 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRole?: UserRo
 
   if (allowedRole) {
     if (allowedRole === 'admin' && currentUser.role !== 'admin') {
+      return <Navigate to={currentUser.role === 'dept_admin' || currentUser.isHOD ? '/dept-admin' : currentUser.role === 'teacher' ? '/teacher' : '/student'} replace />;
+    }
+    if (allowedRole === 'dept_admin' && currentUser.role !== 'dept_admin' && !currentUser.isHOD && currentUser.role !== 'admin') {
       return <Navigate to={currentUser.role === 'teacher' ? '/teacher' : '/student'} replace />;
     }
-    if (allowedRole === 'teacher' && currentUser.role !== 'teacher' && currentUser.role !== 'admin') {
+    if (allowedRole === 'teacher' && currentUser.role !== 'teacher' && currentUser.role !== 'dept_admin' && currentUser.role !== 'admin') {
       return <Navigate to="/student" replace />;
     }
     if (allowedRole === 'student' && currentUser.role !== 'student') {
-      return <Navigate to={currentUser.role === 'admin' ? '/admin' : '/teacher'} replace />;
+      return <Navigate to={currentUser.role === 'admin' ? '/admin' : currentUser.role === 'dept_admin' || currentUser.isHOD ? '/dept-admin' : '/teacher'} replace />;
     }
   }
 
@@ -52,6 +56,7 @@ const DefaultRedirect: React.FC = () => {
   const { currentUser } = useAuth();
   if (!currentUser) return <Navigate to="/login" replace />;
   if (currentUser.role === 'admin') return <Navigate to="/admin" replace />;
+  if (currentUser.role === 'dept_admin' || currentUser.isHOD) return <Navigate to="/dept-admin" replace />;
   if (currentUser.role === 'teacher') return <Navigate to="/teacher" replace />;
   return <Navigate to="/student" replace />;
 };
@@ -70,15 +75,17 @@ export const App: React.FC = () => {
               {/* Default Dynamic Redirect */}
               <Route path="/" element={<DefaultRedirect />} />
 
-              {/* Admin Routes */}
+              {/* Admin Routes (Principal) */}
               <Route path="/admin" element={
                 <ProtectedRoute allowedRole="admin">
                   <AdminDashboard />
                 </ProtectedRoute>
               } />
-              <Route path="/admin/timetable" element={
-                <ProtectedRoute allowedRole="admin">
-                  <TimetableSchedule />
+
+              {/* Department Admin Routes (HOD) */}
+              <Route path="/dept-admin" element={
+                <ProtectedRoute allowedRole="dept_admin">
+                  <DepartmentAdminDashboard />
                 </ProtectedRoute>
               } />
 

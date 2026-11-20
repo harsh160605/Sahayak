@@ -202,7 +202,7 @@ export const INITIAL_ORGANIZATION_USERS: UserProfile[] = [
     uid: 'teacher_prof_sharma',
     fullName: 'Dr. Alok Sharma',
     email: 'alok.sharma@college.edu',
-    role: 'teacher',
+    role: 'dept_admin',
     organizationId: 'org_apex_tech',
     organizationCode: 'APEX101',
     organizationName: 'Apex Institute of Technology',

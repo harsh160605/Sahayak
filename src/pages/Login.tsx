@@ -179,7 +179,15 @@ export const Login: React.FC = () => {
 
   const handleQuickDemo = (demoRole: UserRole) => {
     loginAsDemoUser(demoRole);
-    navigate(demoRole === 'admin' ? '/admin' : demoRole === 'teacher' ? '/teacher' : '/student');
+    navigate(
+      demoRole === 'admin' 
+        ? '/admin' 
+        : demoRole === 'dept_admin' 
+          ? '/dept-admin' 
+          : demoRole === 'teacher' 
+            ? '/teacher' 
+            : '/student'
+    );
   };
 
   return (
@@ -576,22 +584,30 @@ export const Login: React.FC = () => {
             <span className="text-[10px] uppercase font-mono tracking-wider text-navy-500 block text-center">
               Quick 1-Click Evaluation Accounts (Apex Tech - APEX101)
             </span>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
               <button
                 type="button"
                 onClick={() => handleQuickDemo('admin')}
                 className="p-2 rounded-md border border-amber-300 bg-amber-50 hover:bg-amber-100 text-left text-xs transition-colors"
               >
                 <p className="font-semibold text-navy-900 truncate">Dr. R. Kulkarni</p>
-                <p className="text-[10px] text-amber-800 font-mono font-bold">Admin Demo &rarr;</p>
+                <p className="text-[10px] text-amber-800 font-mono font-bold">Principal &rarr;</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickDemo('dept_admin')}
+                className="p-2 rounded-md border border-purple-300 bg-purple-50 hover:bg-purple-100 text-left text-xs transition-colors"
+              >
+                <p className="font-semibold text-navy-900 truncate">Dr. A. Sharma</p>
+                <p className="text-[10px] text-purple-800 font-mono font-bold">HOD (Comp) &rarr;</p>
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickDemo('teacher')}
                 className="p-2 rounded-md border border-warm-300 bg-warm-100 hover:bg-warm-200 text-left text-xs transition-colors"
               >
-                <p className="font-semibold text-navy-900 truncate">Dr. A. Sharma</p>
-                <p className="text-[10px] text-primary font-mono font-bold">Faculty Demo &rarr;</p>
+                <p className="font-semibold text-navy-900 truncate">Prof. P. Iyer</p>
+                <p className="text-[10px] text-primary font-mono font-bold">Faculty &rarr;</p>
               </button>
               <button
                 type="button"
@@ -599,7 +615,7 @@ export const Login: React.FC = () => {
                 className="p-2 rounded-md border border-warm-300 bg-warm-100 hover:bg-warm-200 text-left text-xs transition-colors"
               >
                 <p className="font-semibold text-navy-900 truncate">Aarav Patel</p>
-                <p className="text-[10px] text-teal-800 font-mono font-bold">Student Demo &rarr;</p>
+                <p className="text-[10px] text-teal-800 font-mono font-bold">Student &rarr;</p>
               </button>
             </div>
           </div>

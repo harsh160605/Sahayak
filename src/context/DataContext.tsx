@@ -16,7 +16,8 @@ import {
   DayOfWeek,
   LectureConductStatus,
   LectureSessionCategory,
-  DeviceChangeRequest
+  DeviceChangeRequest,
+  UserRole
 } from '../types';
 import { 
   INITIAL_COURSES, 
@@ -60,6 +61,7 @@ interface DataContextType {
   addDepartmentHierarchy: (dept: Omit<Department, 'id'>) => Promise<Department>;
   updateDepartmentHierarchy: (id: string, updates: Partial<Department>) => Promise<void>;
   deleteDepartmentHierarchy: (id: string) => Promise<void>;
+  assignDepartmentHOD: (departmentId: string, facultyUid: string) => Promise<void>;
   
   addDivision: (div: Omit<Division, 'id'>) => Promise<Division>;
   updateDivision: (id: string, updates: Partial<Division>) => Promise<void>;
@@ -2144,6 +2146,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const assignDepartmentHOD = async (departmentId: string, facultyUid: string) => {
+    const targetDept = departments.find(d => d.id === departmentId);
+    const faculty = organizationUsers.find(u => u.uid === facultyUid);
+    if (!targetDept || !faculty) {
+      throw new Error('Department or faculty member not found.');
+    }
+
+    // 1. Update department record with HOD details
+    await updateDepartmentHierarchy(departmentId, {
+      hodId: faculty.uid,
+      hodName: faculty.fullName,
+      hodEmail: faculty.email
+    });
+
+    // 2. Update users in department: set selected faculty as HOD (dept_admin) and revoke any other HOD in that department
+    const updatedUsers = organizationUsers.map(u => {
+      const inSameDept = (u.departmentId && u.departmentId === departmentId) || u.department === targetDept.name;
+      if (u.uid === facultyUid) {
+        return { 
+          ...u, 
+          isHOD: true, 
+          role: 'dept_admin' as UserRole, 
+          departmentId: targetDept.id, 
+          department: targetDept.name,
+          updatedAt: new Date().toISOString()
+        };
+      } else if (inSameDept && u.isHOD) {
+        return { 
+          ...u, 
+          isHOD: false, 
+          role: (u.role === 'dept_admin' ? 'teacher' : u.role) as UserRole,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return u;
+    });
+
+    setOrganizationUsers(updatedUsers);
+
+    if (isLiveFirebaseConfigured) {
+      try {
+        await updateDoc(doc(db, 'users', facultyUid), { 
+          isHOD: true, 
+          role: 'dept_admin', 
+          departmentId: targetDept.id, 
+          department: targetDept.name,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('assignDepartmentHOD firestore notice:', e);
+      }
+    }
+  };
+
   // Division CRUD
   const addDivision = async (data: Omit<Division, 'id'>) => {
     const divId = `div_${data.departmentCode.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -2194,8 +2250,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Subject Allocation with Duplicate Protection & Admin Authorization
   const allocateSubjectToDivision = async (allocData: Omit<SubjectAllocation, 'id'>) => {
-    if (currentUser?.role !== 'admin') {
-      throw new Error('Unauthorized: Only Department Administrators can assign subjects to faculty members.');
+    if (currentUser?.role !== 'admin' && currentUser?.role !== 'dept_admin' && !currentUser?.isHOD) {
+      throw new Error('Unauthorized: Only Department Administrators or HODs can assign subjects to faculty members.');
     }
 
     if (!allocData.courseId || !allocData.teacherId || !allocData.divisionId) {
@@ -2240,8 +2296,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateSubjectAllocation = async (allocationId: string, updates: Partial<SubjectAllocation>) => {
-    if (currentUser?.role !== 'admin') {
-      throw new Error('Unauthorized: Only Department Administrators can edit subject assignments.');
+    if (currentUser?.role !== 'admin' && currentUser?.role !== 'dept_admin' && !currentUser?.isHOD) {
+      throw new Error('Unauthorized: Only Department Administrators or HODs can edit subject assignments.');
     }
 
     try {
@@ -2255,8 +2311,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const removeSubjectAllocation = async (allocationId: string) => {
-    if (currentUser?.role !== 'admin') {
-      throw new Error('Unauthorized: Only Department Administrators can remove subject assignments.');
+    if (currentUser?.role !== 'admin' && currentUser?.role !== 'dept_admin' && !currentUser?.isHOD) {
+      throw new Error('Unauthorized: Only Department Administrators or HODs can remove subject assignments.');
     }
 
     try {
@@ -2812,6 +2868,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addDepartmentHierarchy,
         updateDepartmentHierarchy,
         deleteDepartmentHierarchy,
+        assignDepartmentHOD,
         addDivision,
         updateDivision,
         deleteDivision,

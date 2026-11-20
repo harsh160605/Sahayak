@@ -12,7 +12,10 @@ import {
   LogOut,
   GraduationCap,
   ArrowRightLeft,
-  Calendar
+  Calendar,
+  Layers,
+  ShieldCheck,
+  Building
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -36,22 +39,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
 
   if (!currentUser) return null;
 
-  const isTeacher = currentUser.role === 'teacher';
   const isAdmin = currentUser.role === 'admin';
+  const isDeptAdmin = currentUser.role === 'dept_admin' || Boolean(currentUser.isHOD);
+  const isTeacher = currentUser.role === 'teacher';
   const pendingRequestsCount = requests.filter(r => r.teacherId === currentUser.uid && r.status === 'pending').length;
 
   const adminNavItems: NavItem[] = [
-    { label: 'Admin Console', to: '/admin', icon: LayoutDashboard },
+    { label: 'Principal Console', to: '/admin', icon: LayoutDashboard },
     { label: 'Institute Roster', to: '/institute-directory', icon: Users },
-    { label: 'Master Timetable', to: '/admin/timetable', icon: Calendar },
     { label: 'Course Catalog', to: '/teacher/courses', icon: BookOpen },
+    { label: 'Profile', to: '/profile', icon: User },
+  ];
+
+  const deptAdminNavItems: NavItem[] = [
+    { label: 'HOD Console', to: '/dept-admin', icon: LayoutDashboard },
+    { label: 'Classes & Divisions', to: '/dept-admin', icon: Layers },
+    { label: 'Subject Allocations', to: '/dept-admin', icon: ShieldCheck },
+    { label: 'Department Timetable', to: '/teacher/timetable', icon: Calendar },
+    { label: 'Manage Students', to: '/teacher/students', icon: Users },
     { label: 'Take Attendance', to: '/teacher/take-attendance', icon: QrCode },
     { label: 'Attendance Reports', to: '/teacher/reports', icon: BarChart3 },
+    { 
+      label: 'Enrollment Requests', 
+      to: '/teacher/requests', 
+      icon: UserCheck, 
+      badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined 
+    },
+    { label: 'Institute Directory', to: '/institute-directory', icon: Users },
     { label: 'Profile', to: '/profile', icon: User },
   ];
 
   const teacherNavItems: NavItem[] = [
-    { label: 'Dashboard', to: '/teacher', icon: LayoutDashboard },
+    { label: 'Faculty Dashboard', to: '/teacher', icon: LayoutDashboard },
     { label: 'My Courses', to: '/teacher/courses', icon: BookOpen },
     { label: 'Class Timetable', to: '/teacher/timetable', icon: Calendar },
     { label: 'Manage Students', to: '/teacher/students', icon: Users },
@@ -79,7 +98,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     { label: 'Profile', to: '/profile', icon: User },
   ];
 
-  const navItems: NavItem[] = isAdmin ? adminNavItems : isTeacher ? teacherNavItems : studentNavItems;
+  const navItems: NavItem[] = isAdmin 
+    ? adminNavItems 
+    : isDeptAdmin 
+      ? deptAdminNavItems 
+      : isTeacher 
+        ? teacherNavItems 
+        : studentNavItems;
 
   return (
     <aside className="w-64 bg-surface border-r border-warm-300 min-h-screen flex flex-col justify-between shrink-0 select-none">
@@ -96,11 +121,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
                 <span className={`text-[10px] font-mono tracking-widest font-medium uppercase px-1.5 py-0.5 rounded border ${
                   isAdmin 
                     ? 'bg-amber-100 text-amber-900 border-amber-300' 
-                    : isTeacher 
-                      ? 'bg-warm-200 text-navy-700 border-warm-300' 
-                      : 'bg-teal-100 text-teal-800 border-teal-300'
+                    : isDeptAdmin
+                      ? 'bg-purple-100 text-purple-900 border-purple-300'
+                      : isTeacher 
+                        ? 'bg-warm-200 text-navy-700 border-warm-300' 
+                        : 'bg-teal-100 text-teal-800 border-teal-300'
                 }`}>
-                  {isAdmin ? 'ADMIN' : isTeacher ? 'FACULTY' : 'STUDENT'}
+                  {isAdmin ? 'ADMIN' : isDeptAdmin ? 'HOD' : isTeacher ? 'FACULTY' : 'STUDENT'}
                 </span>
               </span>
               <p className="text-[11px] text-navy-500 font-mono truncate max-w-[130px]">
@@ -119,7 +146,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-navy-900 truncate">{currentUser.fullName}</p>
               <p className="text-[10px] text-navy-500 font-mono truncate">
-                {isTeacher ? currentUser.facultyId : currentUser.studentId}
+                {isDeptAdmin 
+                  ? `${currentUser.facultyId || 'HOD'} • ${currentUser.department || 'Dept'}` 
+                  : isTeacher 
+                    ? `${currentUser.facultyId || 'Faculty'} • ${currentUser.department || 'Dept'}` 
+                    : currentUser.studentId || currentUser.rollNo || 'Student'}
               </p>
             </div>
           </div>
@@ -136,9 +167,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
             const Icon = item.icon;
             return (
               <NavLink
-                key={item.to}
+                key={item.to + item.label}
                 to={item.to}
-                end={item.to === '/teacher' || item.to === '/student'}
+                end={item.to === '/teacher' || item.to === '/student' || item.to === '/dept-admin'}
                 onClick={onClose}
                 className={({ isActive }) =>
                   cn(
@@ -165,28 +196,62 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
         </nav>
       </div>
 
-      {/* Role Switcher & Sign Out */}
+      {/* 4-Way Role Switcher & Sign Out */}
       <div className="p-3 border-t border-warm-300 space-y-2">
-        <button
-          onClick={() => switchUserRole(isTeacher ? 'student' : 'teacher')}
-          className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-md bg-warm-200/70 text-navy-800 hover:bg-warm-300/80 transition-colors"
-          title="Switch view for presentation or evaluation"
-        >
-          <div className="flex items-center gap-2">
-            <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
-            <span>Switch to {isTeacher ? 'Student View' : 'Teacher View'}</span>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[10px] font-mono font-semibold text-navy-500 uppercase px-1">
+            <span className="flex items-center gap-1">
+              <ArrowRightLeft className="h-3 w-3 text-primary" />
+              <span>Role Switcher</span>
+            </span>
+            <span className="bg-surface px-1 py-0.2 rounded border border-warm-300">DEMO</span>
           </div>
-          <span className="text-[10px] uppercase font-mono px-1 py-0.5 bg-surface rounded border border-warm-300 text-navy-600">
-            DEMO
-          </span>
-        </button>
+          <div className="grid grid-cols-2 gap-1 text-[11px] font-semibold">
+            <button
+              onClick={() => switchUserRole('admin')}
+              className={cn(
+                "px-2 py-1.5 rounded transition-colors text-left",
+                isAdmin ? "bg-amber-100 text-amber-900 border border-amber-300 font-bold" : "bg-warm-100 text-navy-700 hover:bg-warm-200"
+              )}
+            >
+              Principal
+            </button>
+            <button
+              onClick={() => switchUserRole('dept_admin')}
+              className={cn(
+                "px-2 py-1.5 rounded transition-colors text-left",
+                isDeptAdmin ? "bg-purple-100 text-purple-900 border border-purple-300 font-bold" : "bg-warm-100 text-navy-700 hover:bg-warm-200"
+              )}
+            >
+              HOD
+            </button>
+            <button
+              onClick={() => switchUserRole('teacher')}
+              className={cn(
+                "px-2 py-1.5 rounded transition-colors text-left",
+                isTeacher && !isDeptAdmin ? "bg-primary/10 text-primary border border-primary/30 font-bold" : "bg-warm-100 text-navy-700 hover:bg-warm-200"
+              )}
+            >
+              Faculty
+            </button>
+            <button
+              onClick={() => switchUserRole('student')}
+              className={cn(
+                "px-2 py-1.5 rounded transition-colors text-left",
+                currentUser.role === 'student' ? "bg-teal-100 text-teal-900 border border-teal-300 font-bold" : "bg-warm-100 text-navy-700 hover:bg-warm-200"
+              )}
+            >
+              Student
+            </button>
+          </div>
+        </div>
 
         <button
           onClick={() => {
             onClose?.();
             logout();
           }}
-          className="w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[44px] text-xs font-medium text-navy-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-2 min-h-[40px] text-xs font-medium text-navy-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
         >
           <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />
           <span>Sign Out</span>
@@ -195,4 +260,3 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
     </aside>
   );
 };
-

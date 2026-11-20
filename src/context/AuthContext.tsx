@@ -64,21 +64,40 @@ export const DEMO_ADMIN: UserProfile = {
   updatedAt: '2024-01-01T08:00:00Z'
 };
 
-export const DEMO_TEACHER: UserProfile = {
+export const DEMO_DEPT_ADMIN: UserProfile = {
   uid: 'teacher_prof_sharma',
-  fullName: 'Dr. Alok Sharma',
+  fullName: 'Dr. Alok Sharma (HOD)',
   email: 'alok.sharma@college.edu',
-  role: 'teacher',
+  role: 'dept_admin',
   organizationId: 'org_apex_tech',
   organizationCode: 'APEX101',
   organizationName: 'Apex Institute of Technology',
-  facultyId: 'FAC-COMP-01',
+  facultyId: 'HOD-COMP-01',
   department: 'Computer Engineering',
   departmentId: 'dept_comp',
   divisionId: 'div_comp_te_a',
   divisionName: 'Division A',
   isClassTeacher: true,
   isHOD: true,
+  createdAt: '2024-01-10T10:00:00Z',
+  updatedAt: '2024-01-10T10:00:00Z'
+};
+
+export const DEMO_TEACHER: UserProfile = {
+  uid: 'teacher_prof_iyer',
+  fullName: 'Prof. Priya Iyer',
+  email: 'priya.i@college.edu',
+  role: 'teacher',
+  organizationId: 'org_apex_tech',
+  organizationCode: 'APEX101',
+  organizationName: 'Apex Institute of Technology',
+  facultyId: 'FAC-COMP-02',
+  department: 'Computer Engineering',
+  departmentId: 'dept_comp',
+  divisionId: 'div_comp_te_b',
+  divisionName: 'Division B',
+  isClassTeacher: true,
+  isHOD: false,
   createdAt: '2024-01-10T10:00:00Z',
   updatedAt: '2024-01-10T10:00:00Z'
 };
@@ -113,7 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (!parsed.uid.startsWith('teacher_prof_') && !parsed.uid.startsWith('student_aarav_')) {
+          if (!parsed.uid.startsWith('teacher_prof_') && !parsed.uid.startsWith('student_aarav_') && !parsed.uid.startsWith('dept_admin_')) {
             return parsed;
           }
         } catch {
@@ -503,6 +522,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let user = DEMO_TEACHER;
     if (role === 'student') user = DEMO_STUDENT;
     if (role === 'admin') user = DEMO_ADMIN;
+    if (role === 'dept_admin') user = DEMO_DEPT_ADMIN;
     setCurrentUser(user);
     setCurrentOrg(INITIAL_ORGANIZATION);
     localStorage.setItem('smartattend_current_user', JSON.stringify(user));

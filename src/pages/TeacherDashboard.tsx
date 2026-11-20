@@ -45,6 +45,7 @@ export const TeacherDashboard: React.FC = () => {
     divisions, 
     enrollments,
     subjectAllocations,
+    departments,
     deviceChangeRequests,
     approveDeviceChange,
     rejectDeviceChange,
@@ -397,6 +398,7 @@ export const TeacherDashboard: React.FC = () => {
   // Time-based greeting
   const hour = new Date().getHours();
   const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const myDept = departments?.find(d => d.id === currentUser?.departmentId || d.name === currentUser?.department);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -414,6 +416,11 @@ export const TeacherDashboard: React.FC = () => {
           </h1>
           <p className="hidden sm:block text-xs text-navy-600 mt-0.5">
             {currentOrg?.name || 'Apex Institute of Technology'} &bull; Department of {currentUser?.department || 'Computer Engineering'}
+            {myDept?.hodName && (
+              <span className="text-navy-500 font-mono text-[11px] ml-2 pl-2 border-l border-warm-300">
+                HOD: <strong className="text-navy-800">{myDept.hodName}</strong>
+              </span>
+            )}
           </p>
         </div>
 
